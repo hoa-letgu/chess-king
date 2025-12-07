@@ -1,0 +1,14 @@
+{
+  "name": "api",
+ "version": "1.0.0",
+  "description": "your project description",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "socket.io": "^4.8.1"
+  }
+}

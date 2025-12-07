@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tắt purge Tailwind từ đây trở xuống */
+@layer utilities {
+  .square-selected {}
+  .square-last-from {}
+  .square-last-to {}
+  .square-legal {}
+  .captured-piece {}
+}
+
+
+/* Ô được chọn */
+.square-selected {
+  outline: 3px solid #53a6ff;
+  outline-offset: -3px;
+  animation: selectedPulse 0.25s ease-out;
+}
+
+@keyframes selectedPulse {
+  from {
+    outline-color: transparent;
+  }
+  to {
+    outline-color: #53a6ff;
+  }
+}
+
+/* Nước đi cuối: FROM */
+.square-last-from {
+  background: radial-gradient(circle, rgba(255,255,0,0.35) 0%, rgba(255,255,0,0.15) 60%, transparent 100%);
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Nước đi cuối: TO */
+.square-last-to {
+  background: radial-gradient(circle, rgba(255,200,0,0.55) 0%, rgba(255,200,0,0.25) 60%, transparent 100%);
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Nước hợp lệ (legal moves) */
+.square-legal::after {
+  content: "";
+  width: 26%;
+  height: 26%;
+  background: rgba(0, 180, 255, 0.5);
+  border-radius: 50%;
+  position: absolute;
+  transform: translate(-50%, -50%);
+  top: 50%;
+  left: 50%;
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Animation Fade */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
