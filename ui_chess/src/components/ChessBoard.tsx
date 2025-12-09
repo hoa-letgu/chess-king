@@ -7,17 +7,18 @@ type LastMove = {
   to: string;
   inCheckSquare?: string | null;
   checkBy?: { square: string; piece: string } | null;
+  color?: "w" | "b";
 } | null;
 
 type MovingPiece = {
-  piece: string;   // "P","p","R","r",...
-  from: string;    // "e2"
-  to: string;      // "e4"
+  piece: string;        // "P","p","R","r",...
+  from: string;
+  to: string;
 };
 
 type CapturedPiece = {
-  square: string;  // ô bị ăn
-  piece: string;   // key hình: "P","p","Q","q",...
+  square: string;
+  piece: string;
 };
 
 type Props = {
@@ -27,6 +28,11 @@ type Props = {
   lastMove: LastMove;
   capturedPiece: CapturedPiece | null;
   movingPiece: MovingPiece | null;
+  movingPath: { x: number; y: number }[];
+  movingStep: number;
+  hidePiece: string | null;
+  deadKingSquare: string | null;
+  viewColor: "w" | "b";          // ⭐ góc nhìn người chơi
   onClick: (square: string) => void;
 };
 
@@ -37,29 +43,51 @@ export function ChessBoard({
   lastMove,
   capturedPiece,
   movingPiece,
+  movingPath,
+  movingStep,
   hidePiece,
+  deadKingSquare,
+  viewColor,
   onClick,
 }: Props) {
   const squares: JSX.Element[] = [];
+  const isWhiteView = viewColor === "w";
 
-  // Chuyển "e4" -> % toạ độ
+  // ================================
+  // helper: square ("e4") -> % theo góc nhìn
+  // ================================
   const squareToXY = (sq: string) => {
-    const file = sq[0];
-    const rank = Number(sq[1]);
-    return {
-      x: "abcdefgh".indexOf(file) * 12.5,
-      y: (8 - rank) * 12.5,
-    };
+    const files = "abcdefgh";
+    const fileIndex = files.indexOf(sq[0]); // 0..7
+    const rankNum = Number(sq[1]);          // 1..8
+
+    if (isWhiteView) {
+      // a1: x=0, y=87.5 (dưới-trái)
+      return {
+        x: fileIndex * 12.5,
+        y: (8 - rankNum) * 12.5,
+      };
+    } else {
+      // xoay 180° logic: h8 dưới-phải, h1 trên-phải
+      return {
+        x: (7 - fileIndex) * 12.5,
+        y: (rankNum - 1) * 12.5,
+      };
+    }
   };
 
   const kingInCheckSquare = lastMove?.inCheckSquare ?? null;
-  const checkBy = lastMove?.checkBy ?? null;
 
-  // --------------------------
-  // Render từng ô + quân
-  // --------------------------
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
+  // ================================
+  // RENDER BOARD (flip theo view)
+  // ================================
+  for (let vr = 0; vr < 8; vr++) {
+    for (let vc = 0; vc < 8; vc++) {
+      // vr, vc: vị trí hiển thị (0..7)
+      // r, c: index thật trong board[]
+      const r = isWhiteView ? vr : 7 - vr;
+      const c = isWhiteView ? vc : 7 - vc;
+
       const file = "abcdefgh"[c];
       const rank = 8 - r;
       const square = `${file}${rank}`;
@@ -77,31 +105,26 @@ export function ChessBoard({
       const isLastFrom = lastMove?.from === square;
       const isLastTo = lastMove?.to === square;
       const isKingCheck = kingInCheckSquare === square;
-      const isCheckingPiece = !!(checkBy && checkBy.square === square);
+      const isDeadKing = deadKingSquare === square;
 
       const style: CSSProperties = {};
 
-      // highlight nước vừa đi
+      // highlight nước vừa đi (cho cả 2 bên – bạn thích có thể đổi màu theo lastMove.color)
       if (isLastFrom) style.background = "rgba(255,215,0,0.35)";
-      if (isLastTo) style.background = "rgba(255,200,0,0.55)";
+      if (isLastTo) style.background = "rgba(255,220,0,0.55)";
 
-      // ô đang chọn
       if (isSelected) style.outline = "3px solid #53a6ff";
-
-      // ô hợp lệ → chỉ viền, không chấm tròn
-      if (isLegal) {
+      if (isLegal)
         style.boxShadow = "inset 0 0 0 3px rgba(50,150,255,0.65)";
-      }
 
-      // vua đang bị chiếu
       if (isKingCheck) {
         style.animation = "kingBlink 0.45s ease-in-out 0s 3";
         style.boxShadow = "inset 0 0 12px 4px rgba(255,0,0,0.7)";
       }
 
-      const mustHidePiece =
-        movingPiece &&
-        (movingPiece.from === square || movingPiece.to === square);
+      const hideStaticPiece =
+        hidePiece === square ||
+        (movingPiece && movingPiece.from === square);
 
       squares.push(
         <button
@@ -111,45 +134,77 @@ export function ChessBoard({
             position: "absolute",
             width: "12.5%",
             height: "12.5%",
-            left: `${c * 12.5}%`,
-            top: `${r * 12.5}%`,
+            left: `${vc * 12.5}%`,     // dùng cột hiển thị
+            top: `${vr * 12.5}%`,      // dùng hàng hiển thị
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
             ...style,
           }}
         >
-          {/* Quân cờ tĩnh (ẩn nếu đang có movingPiece ở from/to) */}
-          {pieceKey && hidePiece !== square && !(movingPiece && movingPiece.from === square) && (
-    <img src={PIECE_IMG[pieceKey]} style={{ width:"80%", height:"80%" }} />
-)}
-
+          {pieceKey && !hideStaticPiece && (
+            <img
+              src={PIECE_IMG[pieceKey]}
+              style={{
+                width: "80%",
+                height: "80%",
+                pointerEvents: "none",
+                transition: "transform 0.35s ease-out",
+                ...(isDeadKing
+                  ? { transform: "rotate(90deg)", opacity: 0.9 }
+                  : {}),
+              }}
+            />
+          )}
         </button>
       );
     }
   }
 
-  // --------------------------
-  // Quân đang di chuyển (animation)
-  // --------------------------
+  // ================================
+  // Quân đang di chuyển (theo movingPath + view)
+  // ================================
   const renderMovingPiece = () => {
-    if (!movingPiece) return null;
+    if (!movingPiece || !movingPath || movingPath.length === 0) return null;
 
-    const { piece, from, to } = movingPiece;
-    const start = squareToXY(from);
-    const end = squareToXY(to);
+    const { piece } = movingPiece;
+    const step =
+      movingPath[movingStep] || movingPath[movingPath.length - 1];
+
+    const fileIndex = step.x; // 0..7
+    const rankNum = step.y;   // 1..8
+
+    let xPct: number;
+    let yPct: number;
+
+    if (isWhiteView) {
+      xPct = fileIndex * 12.5;
+      yPct = (8 - rankNum) * 12.5;
+    } else {
+      xPct = (7 - fileIndex) * 12.5;
+      yPct = (rankNum - 1) * 12.5;
+    }
 
     return (
       <img
         src={PIECE_IMG[piece]}
-        
+        style={{
+          position: "absolute",
+          width: "12.5%",
+          height: "12.5%",
+          left: `${xPct}%`,
+          top: `${yPct}%`,
+          transition: "all 50ms linear",
+          pointerEvents: "none",
+          zIndex: 100,
+        }}
       />
     );
   };
 
-  // --------------------------
-  // Quân bị ăn (fade out)
-  // --------------------------
+  // ================================
+  // Quân bị ăn (fade out theo view)
+  // ================================
   const renderCaptured = () => {
     if (!capturedPiece) return null;
     const { x, y } = squareToXY(capturedPiece.square);
@@ -157,7 +212,15 @@ export function ChessBoard({
     return (
       <img
         src={PIECE_IMG[capturedPiece.piece]}
-       
+        style={{
+          position: "absolute",
+          width: "12.5%",
+          height: "12.5%",
+          left: `${x}%`,
+          top: `${y}%`,
+          animation: "captFadeOut 0.32s ease-out forwards",
+          pointerEvents: "none",
+        }}
       />
     );
   };
@@ -168,9 +231,24 @@ export function ChessBoard({
       style={{
         backgroundImage: "url('/board.png')",
         backgroundSize: "cover",
+        // ❌ KHÔNG rotate container nữa, đã flip bằng logic phía trên
       }}
     >
-     
+      <style>
+        {`
+          @keyframes captFadeOut {
+            0% { opacity: 1; transform: scale(1); }
+            60% { opacity: 0.4; transform: scale(0.55); }
+            100% { opacity: 0; transform: scale(0); }
+          }
+
+          @keyframes kingBlink {
+            0%   { box-shadow: inset 0 0 0px 0px rgba(255,0,0,0.2); }
+            50%  { box-shadow: inset 0 0 20px 9px rgba(255,0,0,0.85); }
+            100% { box-shadow: inset 0 0 0px 0px rgba(255,0,0,0.2); }
+          }
+        `}
+      </style>
 
       {squares}
       {renderMovingPiece()}

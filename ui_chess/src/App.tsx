@@ -1,59 +1,157 @@
-import React, { useRef, useState } from "react";
+// ===============================
+// App.tsx — CLEAN VERSION
+// ===============================
+
+import React, { useRef, useState, useEffect, useMemo } from "react";
 import { Chess } from "chess.js";
 import { ChessBoard } from "@/components/ChessBoard";
+
 import { useChessBot } from "@/hooks/useChessBot";
 import { useOnlineRoom } from "@/hooks/useOnlineRoom";
+import { usePlayerMove } from "@/hooks/usePlayerMove";
+
 import { useSocket } from "@/context/SocketProvider";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
 
+import { RoomSettings } from "@/components/RoomSettings";
+import { PopupModal } from "@/components/PopupModal";
+import { OnlineActions } from "@/components/OnlineActions";
+
+import { randomUUID } from "@/utils/id";
+
+// -----------------------------
 const START_FEN = new Chess().fen();
+// -----------------------------
+
 
 export default function App() {
   const socket = useSocket();
   const gameRef = useRef(new Chess());
 
+  // CORE STATE -----------------
   const [mode, setMode] = useState<"bot" | "online">("bot");
   const [fen, setFen] = useState(START_FEN);
   const [history, setHistory] = useState([START_FEN]);
   const [historyIndex, setHistoryIndex] = useState(0);
 
-  const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
-  const [legalTargets, setLegalTargets] = useState<string[]>([]);
-
-
-
-  const [status, setStatus] = useState("Lượt: Trắng");
-  const [botThinking, setBotThinking] = useState(false);
-  const [botDepth, setBotDepth] = useState(3);
   const [playerColor, setPlayerColor] = useState<"w" | "b">("w");
+  const [onlineColor, setOnlineColor] = useState<"w" | "b" | null>(null);
 
   const [roomId, setRoomId] = useState("");
   const [connected, setConnected] = useState(false);
-  const [onlineColor, setOnlineColor] = useState<"w" | "b" | null>(null);
-  //const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
-  const [capturedPiece, setCapturedPiece] = useState<{
-	  square: string;
-	  piece: string;
-	} | null>(null);
-  const [lastMove, setLastMove] = useState(null);
 
-const [hidePiece, setHidePiece] = useState<string | null>(null);
+  const [lastMove, setLastMove] = useState<any>(null);
+  const [capturedPiece, setCapturedPiece] = useState<any>(null);
+  const [deadKingSquare, setDeadKingSquare] = useState<string | null>(null);
 
-  //const [movingPiece, setMovingPiece] = useState(null);
-  const [movingPiece, setMovingPiece] = useState<{
-	  piece: string;
-	  from: string;
-	  to: string;
-	} | null>(null);
+  const [botDepth, setBotDepth] = useState(3);
+  const [botThinking, setBotThinking] = useState(false);
+
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  const [roomList, setRoomList] = useState([]);
+  const [newRoomName, setNewRoomName] = useState("");
+
+  const [gameFinished, setGameFinished] = useState(false);
+
+  const [popup, setPopup] = useState({
+    type: null,
+    message: "",
+    onAccept: null,
+    onReject: null,
+  });
+
+  const [showSettings, setShowSettings] = useState(true);
+
+  const isJoiningRef = useRef(false);
+  const lastLocalMoveIdRef = useRef<string | null>(null);
+
+  const viewColor = mode === "bot" ? playerColor : onlineColor ?? "w";
+
+  // =============================
+  // DISPLAY GAME WITH FEN
+  // =============================
+  const displayGame = useMemo(() => {
+    const g = new Chess();
+    try {
+      g.load(fen);
+    } catch (e) {
+      console.error("Load FEN error:", fen, e);
+    }
+    return g;
+  }, [fen]);
 
 
-  // ==============================
-  // BOT logic
-  // ==============================
+  // =============================
+  // PUSH NEW GAME STATE
+  // =============================
+  const pushState = (newFen, newHist, newIdx, emit = true, lastMoveSend = null) => {
+    const moveId = randomUUID();
+    lastLocalMoveIdRef.current = moveId;
+
+    setFen(newFen);
+    setHistory(newHist);
+    setHistoryIndex(newIdx);
+
+    if (mode === "online" && emit && socket && roomId) {
+      socket.emit("game:state", {
+        roomName: roomId,
+        fen: newFen,
+        history: newHist,
+        historyIndex: newIdx,
+        lastMove: lastMoveSend,
+        moveId,
+      });
+    }
+  };
+
+  // =============================
+  // PLAYER MOVE HOOK
+  // =============================
+  const {
+    selectedSquare,
+    legalTargets,
+    movingPiece,
+    movingPath,
+    movingStep,
+    hidePiece,
+    handleSquareClick,
+    resetAnimation,
+  } = usePlayerMove({
+    fen,
+    gameRef,
+    history,
+    historyIndex,
+    pushState,
+    mode,
+    playerColor,
+    onlineColor,
+    setLastMove,
+    onMoveApplied: (g: Chess) => {
+      if (g.isCheckmate()) {
+        const loser = g.turn();
+        const board = g.board();
+        let dead = null;
+
+        for (let r = 0; r < 8; r++)
+          for (let c = 0; c < 8; c++) {
+            const p = board[r][c];
+            if (p && p.type === "k" && p.color === loser)
+              dead = "abcdefgh"[c] + (8 - r);
+          }
+
+        setDeadKingSquare(dead);
+      }
+    },
+    setIsAnimating,
+    isJoiningRef,
+  });
+
+
+  // =============================
+  // BOT HOOK
+  // =============================
   useChessBot({
     mode,
     playerColor,
@@ -67,316 +165,339 @@ const [hidePiece, setHidePiece] = useState<string | null>(null);
     setHistoryIndex,
     botThinking,
     setBotThinking,
-	setLastMove, 
+    setLastMove,
   });
 
-  // ==============================
-  // ONLINE logic
-  // ==============================
- useOnlineRoom({
-  mode,
-  socket,
-  roomId,
-  setConnected,
-  setOnlineColor,
-  setFen,
-  setHistory,
-  setHistoryIndex,
-  setLastMove,     // ⭐ THÊM NÈ!
-  resetBoard: () => {
-    setSelectedSquare(null);
-    setLegalTargets([]);
-  },
-});
-
-
-  const pushState = (newFen, newHistory, newIndex, emit = true, lastMoveSend = null) => {
-  setFen(newFen);
-  setHistory(newHistory);
-  setHistoryIndex(newIndex);
-
-	 if (mode === "online" && emit && socket && roomId) {
-	  socket.emit("game:state", {
-		roomId,
-		fen: newFen,
-		history: newHistory,
-		historyIndex: newIndex,
-		lastMove: lastMoveSend,
-	  });
-	}
-
-
-};
-// CHUYỂN Ô CỜ → TỌA ĐỘ %
-const squareToXY = (sq: string) => {
-  const file = sq[0];
-  const rank = Number(sq[1]);
-  return {
-    x: "abcdefgh".indexOf(file) * 12.5,
-    y: (8 - rank) * 12.5,
-  };
-};
-
-
-  // ==============================
-  // User click move
-  // ==============================
- const handleSquareClick = (square: string) => {
-  const game = gameRef.current;
-  game.load(fen);
-
-  if (game.isGameOver()) return;
-
-  if (mode === "bot" && game.turn() !== playerColor) return;
-  if (mode === "online" && onlineColor && game.turn() !== onlineColor) return;
-
-  // ============================
-  // 1) chọn quân lần đầu
-  // ============================
-  if (!selectedSquare) {
-    const piece = game.get(square);
-    if (!piece || piece.color !== game.turn()) return;
-
-    setSelectedSquare(square);
-    const moves = game.moves({ square, verbose: true });
-    setLegalTargets(moves.map(m => m.to));
-    return;
-  }
-
-  const from = selectedSquare;
-  const to = square;
-
-  const moves = game.moves({ square: from, verbose: true });
-  const move = moves.find(m => m.to === to);
-
-  if (!move) {
-    setSelectedSquare(null);
-    setLegalTargets([]);
-    return;
-  }
-
-  // ============================
-  // 2) Promotion?
-  // ============================
-  const piece = game.get(from);
-  let promotion = undefined;
-
-  if (piece.type === "p" && (to[1] === "1" || to[1] === "8")) {
-    promotion = "q"; // tạm thời
-  }
 
   // =============================
-  // 3) Animation chuẩn (KHÔNG MOVE)
+  // ONLINE ROOM HOOK
   // =============================
-  const movingPieceKey =
-    piece.color === "w" ? piece.type.toUpperCase() : piece.type;
+  useOnlineRoom({
+    mode,
+    socket,
+    roomId,
+    setConnected,
+    setOnlineColor,
+    setFen,
+    setHistory,
+    setHistoryIndex,
+    setLastMove,
+    lastLocalMoveIdRef,
+    resetAnimation,
+    isJoiningRef,
+  });
 
-  setHidePiece(from);                 // ẩn quân thật ở ô from
-  setMovingPiece({ piece: movingPieceKey, from, to });  // render hình bay
-
-  // reset click UI
-  setSelectedSquare(null);
-  setLegalTargets([]);
 
   // =============================
-  // 4) Sau animation → mới move
+  // LOAD ROOM LIST
   // =============================
-  setTimeout(() => {
-    const newGame = new Chess(fen);
-    const made = newGame.move({ from, to, promotion });
-    if (!made) {
-      setMovingPiece(null);
-      setHidePiece(null);
-      return;
-    }
-
-    // ============================
-    // 5) Kiểm tra vua bị chiếu
-    // ============================
-    let kingSq = null;
-    if (newGame.inCheck()) {
-      const b = newGame.board();
-      for (let r = 0; r < 8; r++) {
-        for (let c = 0; c < 8; c++) {
-          const p = b[r][c];
-          if (p && p.type === "k" && p.color === newGame.turn()) {
-            kingSq = "abcdefgh"[c] + (8 - r);
-          }
-        }
-      }
-    }
-
-    setLastMove({ from, to, inCheckSquare: kingSq });
-
-    // ============================
-    // 6) Cập nhật FEN & history
-    // ============================
-    const newFen = newGame.fen();
-    const newHistory = [...history.slice(0, historyIndex + 1), newFen];
-
-    pushState(newFen, newHistory, newHistory.length - 1, true, { from, to });
-
-    // ============================
-    // 7) Cleanup – animation xong
-    // ============================
-    setMovingPiece(null);
-    setHidePiece(null);
-
-  }, 100); // thời gian animation
-};
+  const loadRooms = () => socket?.emit("rooms:list");
 
 
-  // ==============================
-  // Undo/Redo/Reset
-  // ==============================
-  const handleUndo = () => {
-    if (historyIndex === 0) return;
-    const idx = historyIndex - 1;
-    gameRef.current.load(history[idx]);
-    pushState(history[idx], history, idx);
+  // ======================================
+  // SOCKET EVENT HANDLERS (CLIENT SIDE)
+  // ======================================
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on("rooms:list:response", (list) => setRoomList(list));
+    socket.on("rooms:update", () => socket.emit("rooms:list"));
+
+    socket.on("room:full", () =>
+      setPopup({
+        type: "info",
+        message: "Phòng đã đủ 2 người!",
+        onAccept: () => setPopup({ type: null }),
+      })
+    );
+
+    socket.on("rooms:clear:done", ({ removed }) =>
+      setPopup({
+        type: "info",
+        message: `Đã xoá ${removed} phòng trống.`,
+        onAccept: () => setPopup({ type: null }),
+      })
+    );
+
+    socket.on("room:created", ({ roomName }) =>
+      setPopup({
+        type: "info",
+        message: `Tạo phòng: ${roomName}`,
+        onAccept: () => {
+          setPopup({ type: null });
+          setRoomId(roomName);
+          socket.emit("room:join", { roomName });
+          setShowSettings(false);
+        },
+      })
+    );
+
+    socket.on("room:force-leave", () => {
+      resetBoardState();
+      setRoomId("");
+      setOnlineColor(null);
+      setGameFinished(false);
+
+      setPopup({
+        type: "info",
+        message: "Phòng đã đóng!",
+        onAccept: () => setPopup({ type: null }),
+      });
+    });
+
+    socket.on("room:left", () => {
+      resetFullGame();
+      setRoomId("");
+      setOnlineColor(null);
+
+      setPopup({
+        type: "info",
+        message: "Bạn đã rời phòng.",
+        onAccept: () => setPopup({ type: null }),
+      });
+    });
+
+    socket.on("room:opponent-left", () => {
+      resetMatchOnly();
+      setPopup({
+        type: "info",
+        message: "Đối thủ rời phòng.",
+        onAccept: () => setPopup({ type: null }),
+      });
+    });
+
+    socket.on("room:leave:confirm", () =>
+      setPopup({
+        type: "leaveConfirm",
+        message: "Đối thủ xin rời phòng. Đồng ý?",
+        onAccept: () => {
+          socket.emit("room:leave:approved", { roomName: roomId });
+          setPopup({ type: null });
+        },
+        onReject: () => {
+          socket.emit("room:leave:denied", { roomName: roomId });
+          setPopup({ type: null });
+        },
+      })
+    );
+
+    socket.on("draw:offer:received", () =>
+      setPopup({
+        type: "drawConfirm",
+        message: "Đối thủ đề nghị hòa. Đồng ý?",
+        onAccept: () => {
+          socket.emit("draw:accept", { roomName: roomId });
+          resetMatchOnly();
+          setPopup({ type: null });
+        },
+        onReject: () => {
+          socket.emit("draw:reject", { roomName: roomId });
+          setPopup({ type: null });
+        },
+      })
+    );
+
+    socket.on("draw:accepted", () =>
+      setPopup({
+        type: "info",
+        message: "Hòa!",
+        onAccept: () => {
+          resetMatchOnly();
+          setPopup({ type: null });
+        },
+      })
+    );
+
+    socket.on("draw:rejected", () =>
+      setPopup({
+        type: "info",
+        message: "Đối thủ từ chối hòa.",
+        onAccept: () => setPopup({ type: null }),
+      })
+    );
+
+    return () => {
+      socket.off();
+    };
+  }, [socket, roomId]);
+
+
+  // =============================
+  // RESET FUNCTIONS
+  // =============================
+  const resetBoardState = () => {
+    const g = new Chess();
+    gameRef.current = g;
+    const f = g.fen();
+
+    setFen(f);
+    setHistory([f]);
+    setHistoryIndex(0);
+
+    setOnlineColor(null);
+    setDeadKingSquare(null);
+    setLastMove(null);
+    setCapturedPiece(null);
+    setIsAnimating(false);
+    setGameFinished(false);
+
+    resetAnimation?.();
   };
 
-  const handleRedo = () => {
-    if (historyIndex >= history.length - 1) return;
-    const idx = historyIndex + 1;
-    gameRef.current.load(history[idx]);
-    pushState(history[idx], history, idx);
+  const resetFullGame = () => {
+    const g = new Chess();
+    const f = g.fen();
+
+    setFen(f);
+    setHistory([f]);
+    setHistoryIndex(0);
+
+    setOnlineColor(null);
+    setDeadKingSquare(null);
+    setLastMove(null);
+    setCapturedPiece(null);
+    resetAnimation?.();
   };
 
-  const handleReset = () => {
-    const game = new Chess();
-    gameRef.current = game;
-    const fen = game.fen();
-    pushState(fen, [fen], 0);
+  const resetMatchOnly = () => {
+    const g = new Chess();
+    const f = g.fen();
+    gameRef.current = g;
+
+    setFen(f);
+    setHistory([f]);
+    setHistoryIndex(0);
+
+    setDeadKingSquare(null);
+    setLastMove(null);
+    setCapturedPiece(null);
+    resetAnimation?.();
   };
+	
+   const pushStateLocal = (newFen, newHist, newIdx) => {
+	  const g = new Chess();
+	  g.load(newFen);
 
-  const currentTurn = gameRef.current.turn();
-  const youAreColor = mode === "bot" ? playerColor : onlineColor ?? undefined;
+	  gameRef.current = g;       // ⭐ Cập nhật engine nội bộ BOT
+	  setFen(newFen);
+	  setHistory(newHist);
+	  setHistoryIndex(newIdx);
 
-  // ==============================
-  // Render UI
-  // ==============================
+	  setLastMove(null);         // ⭐ Reset nước đi trước đó
+	  setCapturedPiece(null);
+	  setDeadKingSquare(null);
+	  setIsAnimating(false);
+	};
+
+
+  // =============================
+  // RENDER UI
+  // =============================
+  const currentTurn = displayGame.turn();
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-5xl bg-slate-900/80 border-slate-700">
+    <>
+      {/* BUTTON SETTINGS */}
+      <button
+        onClick={() => setShowSettings(true)}
+        className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-slate-800 border border-slate-600 shadow-lg flex items-center justify-center text-3xl"
+      >
+        ⚙
+      </button>
 
-        <CardHeader>
-          <CardTitle className="flex justify-between">
-            ♟️ Game Cờ Vua – React + Socket.IO
-            <span className="text-sm text-slate-400">
-              Chế độ: {mode === "bot" ? "Chơi với BOT" : "Online realtime"}
-            </span>
-          </CardTitle>
-        </CardHeader>
+      {/* ONLINE ACTION BUTTONS */}
+      <OnlineActions
+        mode={mode}
+        roomId={roomId}
+        gameFinished={gameFinished}
+        history={history}
+        socket={socket}
+        setPopup={setPopup}
+      />
 
-        <CardContent className="grid grid-cols-1 md:grid-cols-[2fr,1fr] gap-6">
+      {/* MAIN */}
+      <div className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-5xl bg-slate-900/80 border border-slate-700 rounded-md p-4">
+          <div className="text-center mb-2 text-sm text-slate-400">
+            {mode === "online" && roomId ? `Phòng: ${roomId}` : "Chess React BOT / ONLINE"}
+          </div>
 
-          {/* Bàn cờ */}
-          <div className="flex flex-col items-center gap-4">
           <ChessBoard
-			  board={gameRef.current.board()}
-			  selectedSquare={selectedSquare}
-			  selectedSquare={selectedSquare}
-			  legalTargets={legalTargets}
-			  lastMove={lastMove}
-			  capturedPiece={capturedPiece}
-			  movingPiece={movingPiece}
-			  onClick={handleSquareClick}
-			/>
+            board={displayGame.board()}
+            selectedSquare={selectedSquare}
+            legalTargets={legalTargets}
+            lastMove={lastMove}
+            capturedPiece={capturedPiece}
+            movingPiece={movingPiece}
+            movingPath={movingPath}
+            movingStep={movingStep}
+            hidePiece={hidePiece}
+            deadKingSquare={deadKingSquare}
+            viewColor={viewColor}
+            onClick={handleSquareClick}
+          />
 
+          <div className="flex justify-center gap-2 mt-4">
+           <Button
+			  onClick={() => {
+				if (historyIndex === 0) return;
 
+				const idx = historyIndex - 1;
+				const newFen = history[idx];
 
-            <div className="flex gap-2">
-              <Button onClick={handleUndo}>⏪ Undo</Button>
-              <Button onClick={handleRedo}>⏩ Redo</Button>
-              <Button onClick={handleReset}>🔄 Ván mới</Button>
-            </div>
+				if (mode === "bot") {
+				  pushStateLocal(newFen, history, idx);  // ⭐ BOT dùng local push
+				} else {
+				  pushState(newFen, history, idx);       // ⭐ ONLINE dùng pushState cũ
+				}
+			  }}
+			>
+			  Undo
+			</Button>
 
-            <div className="text-sm text-slate-300">
-              {status}
-              {mode === "bot" && botThinking && <span> – BOT đang suy nghĩ…</span>}
-            </div>
+			<Button
+			  onClick={() => {
+				if (historyIndex >= history.length - 1) return;
+
+				const idx = historyIndex + 1;
+				const newFen = history[idx];
+
+				if (mode === "bot") {
+				  pushStateLocal(newFen, history, idx);
+				} else {
+				  pushState(newFen, history, idx);
+				}
+			  }}
+			>
+			  Redo
+			</Button>
+
+            <Button onClick={resetBoardState}>Reset</Button>
           </div>
 
-          {/* Control Panel */}
-          <div className="flex flex-col gap-4">
-
-            {/* Chọn Mode */}
-            <div className="space-y-1">
-              <div>Chế độ chơi</div>
-              <Select value={mode} onValueChange={(v) => setMode(v as any)}>
-                <SelectTrigger className="text-white" >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="bot">Chơi với BOT</SelectItem>
-                  <SelectItem value="online">Online 2 người</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Mode BOT */}
-            {mode === "bot" && (
-              <>
-                <div className="space-y-1">
-                  <div>Màu của bạn</div>
-                  <Select
-                    value={playerColor}
-                    onValueChange={(v) => {
-                      setPlayerColor(v as any);
-                      handleReset();
-                    }}
-                  >
-                    <SelectTrigger className="text-white" ><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="w">Trắng</SelectItem>
-                      <SelectItem value="b">Đen</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1">
-                  <div>Độ mạnh BOT</div>
-                  <Select
-                    value={String(botDepth)}
-                    onValueChange={(v) => setBotDepth(Number(v))}
-                  >
-                    <SelectTrigger className="text-white" ><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">Yếu</SelectItem>
-                      <SelectItem value="2">Vừa</SelectItem>
-                      <SelectItem value="3">Mạnh</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
-            )}
-
-            {/* Mode Online */}
-            {mode === "online" && (
-              <>
-                <div className="space-y-1">
-                  <div>Room ID</div>
-                  <div className="flex gap-2">
-                    <Input value={roomId} onChange={(e) => setRoomId(e.target.value)} />
-                    <Button onClick={() => socket.emit("room:join", { roomId })}>Join</Button>
-                  </div>
-                  <div className="text-xs">
-                    Server: {connected ? "Đã kết nối" : "Mất kết nối"}
-                    {onlineColor && <> – Bạn là {onlineColor === "w" ? "Trắng" : "Đen"}</>}
-                  </div>
-                </div>
-              </>
-            )}
-
-            <div className="text-xs border-t pt-2">
-              Lượt hiện tại: <b>{currentTurn === "w" ? "Trắng" : "Đen"}</b>
-              {youAreColor && <> – Bạn là <b>{youAreColor === "w" ? "Trắng" : "Đen"}</b></>}
-            </div>
-
+          <div className="text-center text-sm mt-2 text-slate-300">
+            Lượt hiện tại: {currentTurn === "w" ? "Trắng" : "Đen"}
+            {mode === "bot" && botThinking && " – BOT đang tính…"}
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </div>
+
+      {/* POPUPS */}
+      <RoomSettings
+        showSettings={showSettings}
+        setShowSettings={setShowSettings}
+        mode={mode}
+        setMode={setMode}
+        newRoomName={newRoomName}
+        setNewRoomName={setNewRoomName}
+        roomList={roomList}
+        loadRooms={loadRooms}
+        socket={socket}
+        setRoomId={setRoomId}
+        resetBoardState={resetBoardState}
+      />
+
+      <PopupModal popup={popup} setPopup={setPopup} />
+    </>
   );
 }

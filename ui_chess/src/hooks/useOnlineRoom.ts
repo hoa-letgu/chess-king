@@ -1,5 +1,6 @@
 // hooks/useOnlineRoom.ts
 import { useEffect } from "react";
+import { flushSync } from "react-dom";
 
 export function useOnlineRoom({
   mode,
@@ -10,45 +11,71 @@ export function useOnlineRoom({
   setFen,
   setHistory,
   setHistoryIndex,
-  setLastMove,      // ⭐ THÊM VÀO ĐÂY
-  resetBoard,
+  setLastMove,
+  lastLocalMoveIdRef,
+  resetAnimation,
+  isJoiningRef,
 }) {
   useEffect(() => {
-    if (mode !== "online") return;
-    if (!socket) return;
+    if (mode !== "online" || !socket) return;
 
-    socket.on("connect", () => setConnected(true));
-    socket.on("disconnect", () => setConnected(false));
+    const onConnect = () => setConnected(true);
+    const onDisconnect = () => setConnected(false);
 
-    socket.on("room:joined", (payload) => {
-      setOnlineColor(payload.color);
-      if (payload.fen) {
+    // ============================
+    // JOIN ROOM
+    // ============================
+    const onRoomJoined = (payload) => {
+      console.log("ROOM JOINED:", payload);
+
+      isJoiningRef.current = true; // chỉ block CLICK, không block update
+
+      flushSync(() => {
+        resetAnimation?.();        // xoá animation cũ
+        setOnlineColor(payload.color);
+
         setFen(payload.fen);
         setHistory(payload.history);
         setHistoryIndex(payload.historyIndex);
-      }
-    });
+        setLastMove(payload.lastMove ?? null);
+      });
 
-    socket.on("game:update", (payload) => {
-      setFen(payload.fen);
-      setHistory(payload.history);
-      setHistoryIndex(payload.historyIndex);
-
-      // ⭐⭐ NHẬN lastMove TỪ SERVER – HIGHLIGHT NƯỚC CỦA ĐỐI THỦ
-      if (payload.lastMove) {
-        setLastMove(payload.lastMove);
-      }
-
-      resetBoard();
-    });
-
-    // ⭐ Cleanup tránh listener bị lặp khi re-render
-    return () => {
-      socket.off("connect");
-      socket.off("disconnect");
-      socket.off("room:joined");
-      socket.off("game:update");
+      setTimeout(() => {
+        isJoiningRef.current = false;
+        console.log("✔ Cho phép click trở lại");
+      }, 150);
     };
 
+    // ============================
+    // UPDATE TỪ NGƯỜI KHÁC
+    // ============================
+    const onGameUpdate = (payload) => {
+      console.log("GAME UPDATE:", payload);
+
+      // Nếu là nước của mình thì bỏ qua
+      if (payload.moveId === lastLocalMoveIdRef.current) return;
+
+      // ⭐ FIX: luôn phải reset animation khi sync nước mới
+      resetAnimation?.();
+
+      flushSync(() => {
+        setFen(payload.fen);
+        setHistory(payload.history);
+        setHistoryIndex(payload.historyIndex);
+        setLastMove(payload.lastMove ?? null);
+      });
+    };
+
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("room:joined", onRoomJoined);
+    socket.on("game:update", onGameUpdate);
+
+    return () => {
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("room:joined", onRoomJoined);
+      socket.off("game:update", onGameUpdate);
+    };
   }, [mode, socket, roomId]);
 }

@@ -35,19 +35,18 @@ export function useChessBot({
 
     setTimeout(() => {
       const best = findBestMove(clone, Math.min(botDepth, 2));
-      console.log("BOT MOVE = ", best);
 
       if (!best) {
         setBotThinking(false);
         return;
       }
 
-      // Thực hiện nước đi
+      // BOT thực hiện nước đi
       game.move(best);
 
-      // ================================
-      // ⭐ Xác định ô vua bị chiếu
-      // ================================
+      // -------------------------------
+      // Lấy ô vua bị chiếu
+      // -------------------------------
       let kingSq = null;
       if (game.inCheck()) {
         const b = game.board();
@@ -61,13 +60,10 @@ export function useChessBot({
         }
       }
 
-      // ================================
-      // ⭐ Gửi thông tin lastMove cho UI
-      // ================================
       setLastMove({
         from: best.from,
         to: best.to,
-        inCheckSquare: kingSq ?? null,
+        inCheckSquare: kingSq,
         checkBy: kingSq
           ? {
               square: best.to,
@@ -79,9 +75,16 @@ export function useChessBot({
           : null,
       });
 
-      // cập nhật fen
+      // ================================
+      // ❗❗ FIX LỚN: KHÔNG ĐƯỢC reset history
+      // ================================
       const newFen = game.fen();
-      const newHistory = [...history.slice(0, historyIndex + 1), newFen];
+
+      // khách hàng đang ở giữa history? → append từ vị trí hiện tại
+      const newHistory = [
+        ...history.slice(0, historyIndex + 1),
+        newFen,
+      ];
 
       setFen(newFen);
       setHistory(newHistory);

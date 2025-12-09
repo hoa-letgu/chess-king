@@ -1,6 +1,6 @@
 {
   "name": "api",
- "version": "1.0.0",
+  "version": "1.0.0",
   "description": "your project description",
   "main": "index.js",
   "type": "module",
@@ -8,6 +8,7 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "chess.js": "^1.4.0",
     "express": "^5.2.1",
     "socket.io": "^4.8.1"
   }
