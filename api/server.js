@@ -213,6 +213,23 @@ io.on("connection", (socket) => {
       moveId,
     });
   });
+	socket.on("game:restart", ({ roomName }) => {
+	  const state = rooms.get(roomName);
+	  if (!state) return;
+
+	  const game = new Chess();
+	  state.fen = game.fen();
+	  state.history = [state.fen];
+	  state.historyIndex = 0;
+	  state.lastMove = null;
+
+	  io.to(roomName).emit("game:restart", {
+		fen: state.fen,
+		history: state.history,
+		historyIndex: state.historyIndex,
+	  });
+	});
+
 
   // ======================================
   // 7) CLEAR EMPTY ROOMS

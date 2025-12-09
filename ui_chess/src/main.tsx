@@ -5,9 +5,11 @@ import './index.css'
 //import "@/styles/capture-animation.css";
 
 import App from './App.tsx'
-
+import { SocketProvider } from "@/context/SocketProvider";
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+   <SocketProvider>
     <App />
+  </SocketProvider>
   </StrictMode>,
 )

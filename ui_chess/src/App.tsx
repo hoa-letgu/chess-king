@@ -19,6 +19,10 @@ import { PopupModal } from "@/components/PopupModal";
 import { OnlineActions } from "@/components/OnlineActions";
 
 import { randomUUID } from "@/utils/id";
+import { showSuccess, showError } from "@/utils/toast";
+import { detectGameEnd } from "@/utils/detectGameEnd";
+
+
 
 // -----------------------------
 const START_FEN = new Chess().fen();
@@ -129,21 +133,94 @@ export default function App() {
     onlineColor,
     setLastMove,
     onMoveApplied: (g: Chess) => {
-      if (g.isCheckmate()) {
-        const loser = g.turn();
-        const board = g.board();
-        let dead = null;
+		  // ============================
+		  // 1️⃣ Dùng detectGameEnd để xem ván đã KẾT THÚC chưa
+		  // ============================
+		  const result = detectGameEnd(g);
+		  // result: { ended: boolean; reason: "checkmate" | "draw" | ...; winner: "w" | "b" | null }
 
-        for (let r = 0; r < 8; r++)
-          for (let c = 0; c < 8; c++) {
-            const p = board[r][c];
-            if (p && p.type === "k" && p.color === loser)
-              dead = "abcdefgh"[c] + (8 - r);
-          }
+		  // Mặc định: không checkmate → không xoay vua
+		  setDeadKingSquare(null);
 
-        setDeadKingSquare(dead);
-      }
-    },
+		  // Nếu ván chưa kết thúc -> thoát luôn, KHÔNG popup, KHÔNG xoay vua
+		  if (!result.ended) {
+			setGameFinished(false);
+			return;
+		  }
+
+		  // ============================
+		  // 2️⃣ VÁN ĐÃ KẾT THÚC
+		  // ============================
+		  setGameFinished(true);
+
+		  // 🔹 Nếu là CHECKMATE → xoay vua bên THUA 90°
+		  if (result.reason === "checkmate") {
+			const loser = g.turn(); // màu vua THUA (bên đang tới lượt mà KHÔNG còn nước)
+			const board = g.board();
+			let dead: string | null = null;
+
+			for (let r = 0; r < 8; r++) {
+			  for (let c = 0; c < 8; c++) {
+				const p = board[r][c];
+				if (p && p.type === "k" && p.color === loser) {
+				  dead = "abcdefgh"[c] + (8 - r);
+				}
+			  }
+			}
+
+			setDeadKingSquare(dead);
+		  } else {
+			// Hoà / bế tắc → không xoay vua
+			setDeadKingSquare(null);
+		  }
+
+		  // ============================
+		  // 3️⃣ Popup kết quả: thắng / thua / hòa
+		  // ============================
+		  const myColor = mode === "online" ? onlineColor : playerColor;
+
+		  const message =
+			result.winner === myColor
+			  ? "🎉 Bạn đã thắng!"
+			  : result.winner === null
+			  ? "🤝 Ván đấu hòa!"
+			  : "💀 Bạn đã thua!";
+
+		  // ONLINE: hỏi Đấu lại / Thoát phòng
+		  if (mode === "online" && socket && roomId) {
+			setPopup({
+			  type: "gameEnd",
+			  message,
+			  onAccept: () => {
+				// ⭐ gửi sự kiện reset cho CẢ 2 bên
+				socket.emit("game:restart", { roomName: roomId });
+				setPopup({ type: null });
+			  },
+			  onReject: () => {
+				socket.emit("room:leave:request", { roomName: roomId });
+				setPopup({ type: null });
+			  },
+			});
+		  } else {
+			// BOT mode: chỉ reset local
+			setPopup({
+			  type: "gameEnd",
+			  message,
+			  onAccept: () => {
+				// reset local cho BOT
+				resetMatchOnly();      // bạn đã có sẵn hàm này ở dưới App.tsx
+				setGameFinished(false);
+				setPopup({ type: null });
+			  },
+			  onReject: () => {
+				// cũng reset luôn, hoặc chỉ đóng popup tuỳ bạn
+				setPopup({ type: null });
+			  },
+			});
+		  }
+		},
+
+
     setIsAnimating,
     isJoiningRef,
   });
@@ -198,128 +275,133 @@ export default function App() {
   // SOCKET EVENT HANDLERS (CLIENT SIDE)
   // ======================================
   useEffect(() => {
-    if (!socket) return;
+  if (!socket) return;
 
-    socket.on("rooms:list:response", (list) => setRoomList(list));
-    socket.on("rooms:update", () => socket.emit("rooms:list"));
+  socket.on("rooms:list:response", (list) => setRoomList(list));
+  socket.on("rooms:update", () => socket.emit("rooms:list"));
+  socket.on("game:update", ({ fen, history, historyIndex, lastMove }) => {
+	  const g = new Chess();
+	  g.load(fen);
 
-    socket.on("room:full", () =>
-      setPopup({
-        type: "info",
-        message: "Phòng đã đủ 2 người!",
-        onAccept: () => setPopup({ type: null }),
-      })
-    );
+	  // ================================
+	  // ⭐ KIỂM TRA CHIẾU BÍ TỪ ĐỐI PHƯƠNG
+	  // ================================
+	  if (g.isCheckmate()) {
+		handleCheckmate(g);   // 🟢 Xử lý xoay vua + popup + setGameFinished
+	  }
 
-    socket.on("rooms:clear:done", ({ removed }) =>
-      setPopup({
-        type: "info",
-        message: `Đã xoá ${removed} phòng trống.`,
-        onAccept: () => setPopup({ type: null }),
-      })
-    );
+	  // ================================
+	  // ⭐ CẬP NHẬT GAME STATE UI
+	  // ================================
+	  setFen(fen);
+	  setHistory(history);
+	  setHistoryIndex(historyIndex);
+	  setLastMove(lastMove);
+	});
 
-    socket.on("room:created", ({ roomName }) =>
-      setPopup({
-        type: "info",
-        message: `Tạo phòng: ${roomName}`,
-        onAccept: () => {
-          setPopup({ type: null });
-          setRoomId(roomName);
-          socket.emit("room:join", { roomName });
-          setShowSettings(false);
-        },
-      })
-    );
 
-    socket.on("room:force-leave", () => {
-      resetBoardState();
-      setRoomId("");
-      setOnlineColor(null);
-      setGameFinished(false);
+  socket.on("room:full", () => {
+    showError("Không thể vào phòng", "Phòng đã đủ 2 người!");
+  });
 
-      setPopup({
-        type: "info",
-        message: "Phòng đã đóng!",
-        onAccept: () => setPopup({ type: null }),
-      });
+  socket.on("rooms:clear:done", ({ removed }) => {
+    showSuccess("Dọn phòng thành công", `Đã xoá ${removed} phòng trống.`);
+  });
+
+  socket.on("room:created", ({ roomName }) => {
+    showSuccess("Tạo phòng thành công", `Phòng: ${roomName}`);
+
+    setRoomId(roomName);
+    socket.emit("room:join", { roomName });
+    setShowSettings(false);
+  });
+
+  socket.on("room:force-leave", () => {
+    resetBoardState();
+    setRoomId("");
+    setOnlineColor(null);
+    setGameFinished(false);
+
+    showError("Phòng đã đóng", "Bạn đã bị rời khỏi phòng");
+  });
+
+  socket.on("room:left", () => {
+    resetFullGame();
+    setRoomId("");
+    setOnlineColor(null);
+
+    showSuccess("Đã rời phòng");
+  });
+
+  socket.on("room:opponent-left", () => {
+    resetMatchOnly();
+
+    showSuccess("Đối thủ đã rời phòng");
+  });
+
+  // ✅ Chỉ 2 case này dùng popup
+  socket.on("room:leave:confirm", () => {
+    setPopup({
+      type: "leaveConfirm",
+      message: "Đối thủ xin rời phòng. Đồng ý?",
+      onAccept: () => {
+        socket.emit("room:leave:approved", { roomName: roomId });
+        setPopup({ type: null });
+      },
+      onReject: () => {
+        socket.emit("room:leave:denied", { roomName: roomId });
+        setPopup({ type: null });
+      },
     });
+  });
+  socket.on("game:restart", ({ fen, history, historyIndex }) => {
+	  const g = new Chess();
+	  g.load(fen);
 
-    socket.on("room:left", () => {
-      resetFullGame();
-      setRoomId("");
-      setOnlineColor(null);
+	  gameRef.current = g;
+	  setFen(fen);
+	  setHistory(history);
+	  setHistoryIndex(historyIndex);
 
-      setPopup({
-        type: "info",
-        message: "Bạn đã rời phòng.",
-        onAccept: () => setPopup({ type: null }),
-      });
+	  setDeadKingSquare(null);
+	  setLastMove(null);
+	  setCapturedPiece(null);
+	  setGameFinished(false);
+	  resetAnimation?.();
+	});
+
+	
+  socket.on("draw:offer:received", () => {
+    setPopup({
+      type: "drawConfirm",
+      message: "Đối thủ đề nghị hòa. Đồng ý?",
+      onAccept: () => {
+        socket.emit("draw:accept", { roomName: roomId });
+        resetMatchOnly();
+        setPopup({ type: null });
+      },
+      onReject: () => {
+        socket.emit("draw:reject", { roomName: roomId });
+        setPopup({ type: null });
+      },
     });
+  });
 
-    socket.on("room:opponent-left", () => {
-      resetMatchOnly();
-      setPopup({
-        type: "info",
-        message: "Đối thủ rời phòng.",
-        onAccept: () => setPopup({ type: null }),
-      });
-    });
+  socket.on("draw:accepted", () => {
+    resetMatchOnly();
 
-    socket.on("room:leave:confirm", () =>
-      setPopup({
-        type: "leaveConfirm",
-        message: "Đối thủ xin rời phòng. Đồng ý?",
-        onAccept: () => {
-          socket.emit("room:leave:approved", { roomName: roomId });
-          setPopup({ type: null });
-        },
-        onReject: () => {
-          socket.emit("room:leave:denied", { roomName: roomId });
-          setPopup({ type: null });
-        },
-      })
-    );
+     showSuccess("Hòa", "Ván đấu kết thúc với kết quả hòa");
+  });
 
-    socket.on("draw:offer:received", () =>
-      setPopup({
-        type: "drawConfirm",
-        message: "Đối thủ đề nghị hòa. Đồng ý?",
-        onAccept: () => {
-          socket.emit("draw:accept", { roomName: roomId });
-          resetMatchOnly();
-          setPopup({ type: null });
-        },
-        onReject: () => {
-          socket.emit("draw:reject", { roomName: roomId });
-          setPopup({ type: null });
-        },
-      })
-    );
+  socket.on("draw:rejected", () => {
+     showError("Hoà bị từ chối", "Đối thủ không đồng ý hòa");
+  });
 
-    socket.on("draw:accepted", () =>
-      setPopup({
-        type: "info",
-        message: "Hòa!",
-        onAccept: () => {
-          resetMatchOnly();
-          setPopup({ type: null });
-        },
-      })
-    );
+  return () => {
+    socket.off();
+  };
+}, [socket, roomId]);
 
-    socket.on("draw:rejected", () =>
-      setPopup({
-        type: "info",
-        message: "Đối thủ từ chối hòa.",
-        onAccept: () => setPopup({ type: null }),
-      })
-    );
-
-    return () => {
-      socket.off();
-    };
-  }, [socket, roomId]);
 
 
   // =============================
@@ -389,6 +471,43 @@ export default function App() {
 	  setIsAnimating(false);
 	};
 
+	const handleCheckmate = (game: Chess) => {
+	  const loser = game.turn(); // người bị chiếu bí (mất lượt)
+	  const winner = loser === "w" ? "b" : "w";
+
+	  // Tìm ô vua thua
+	  let dead = null;
+	  const board = game.board();
+	  for (let r = 0; r < 8; r++)
+		for (let c = 0; c < 8; c++) {
+		  const p = board[r][c];
+		  if (p && p.type === "k" && p.color === loser)
+			dead = "abcdefgh"[c] + (8 - r);
+		}
+
+	  setDeadKingSquare(dead);
+	  setGameFinished(true);
+
+	  // Hiện popup kết thúc ván
+	  setPopup({
+		type: "gameEnd",
+		message:
+		  winner === onlineColor
+			? "🎉 Bạn đã thắng!"
+			: "💀 Bạn đã thua!",
+		onAccept: () => {
+		  // đấu lại
+		 socket.emit("game:restart", { roomName: roomId });
+		 setPopup({ type: null });
+
+		},
+		onReject: () => {
+		  // thoát phòng
+		  socket.emit("room:leave:request", { roomName: roomId });
+		  setPopup({ type: null });
+		},
+	  });
+	};
 
   // =============================
   // RENDER UI
