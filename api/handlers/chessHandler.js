@@ -1,25 +1,11 @@
-import { createServer } from "http";
-import { Server } from "socket.io";
-import express from "express";
-import cors from "cors";
+// handlers/chessHandler.js
 import { Chess } from "chess.js";
 
-const app = express();
-app.use(cors());
-const httpServer = createServer(app);
-
-const io = new Server(httpServer, { cors: { origin: "*" } });
-
-// roomName -> state
-// thêm white / black để nhớ người nào màu nào
-const rooms = new Map();
-
-io.on("connection", (socket) => {
-  console.log("Client connected:", socket.id);
-
-  // ======================================
-  // 1) LIST ROOMS
-  // ======================================
+export function setupChessHandlers(io, socket, rooms) {
+  
+  // ======================
+  // 1. LIST ROOMS
+  // ======================
   socket.on("rooms:list", () => {
     const list = [];
 
@@ -34,12 +20,12 @@ io.on("connection", (socket) => {
     socket.emit("rooms:list:response", list);
   });
 
-  // ======================================
-  // 2) CREATE ROOM
-  // ======================================
+  // ======================
+  // 2. CREATE ROOM
+  // ======================
   socket.on("room:create", ({ name }) => {
     const roomName = String(name || "").trim();
-		console.log(name);
+
     if (!roomName) {
       socket.emit("room:create:error", "Tên phòng không được để trống!");
       return;
@@ -77,9 +63,9 @@ io.on("connection", (socket) => {
     io.emit("rooms:update");
   });
 
-  // ======================================
-  // 3) JOIN ROOM (FIX MÀU CHUẨN)
-  // ======================================
+  // ======================
+  // 3. JOIN ROOM
+  // ======================
   socket.on("room:join", ({ roomName }) => {
     let roomState = rooms.get(roomName);
 
@@ -99,13 +85,11 @@ io.on("connection", (socket) => {
     const room = io.sockets.adapter.rooms.get(roomName);
     const clients = room ? [...room] : [];
 
-    // Nếu phòng FULL thật
     if (clients.length >= 2 && !clients.includes(socket.id)) {
       socket.emit("room:full", roomName);
       return;
     }
 
-    // GÁN MÀU
     let color = null;
 
     if (roomState.white === socket.id) color = "w";
@@ -140,45 +124,37 @@ io.on("connection", (socket) => {
     io.emit("rooms:update");
   });
 
-  // ======================================
-  // 4) LEAVE ROOM REQUEST
-  // ======================================
+  // ======================
+  // 4. LEAVE ROOM
+  // ======================
   socket.on("room:leave:request", ({ roomName }) => {
     socket.to(roomName).emit("room:leave:confirm", { from: socket.id });
   });
 
-	socket.on("room:leave:approved", ({ roomName }) => {
-	  const room = io.sockets.adapter.rooms.get(roomName);
-	  if (!room) return;
+  socket.on("room:leave:approved", ({ roomName }) => {
+    const room = io.sockets.adapter.rooms.get(roomName);
+    if (!room) return;
 
-	  // Lấy danh sách player trong phòng
-	  const players = [...room];
+    const players = [...room];
 
-	  // Gửi tín hiệu cho TẤT CẢ người trong phòng → Out phòng & reset
-	  io.to(roomName).emit("room:force-leave");  
+    io.to(roomName).emit("room:force-leave");
 
-	  // Kick tất cả người khỏi phòng
-	  players.forEach(id => {
-		const s = io.sockets.sockets.get(id);
-		if (s) s.leave(roomName);
-	  });
+    players.forEach((id) => {
+      const s = io.sockets.sockets.get(id);
+      if (s) s.leave(roomName);
+    });
 
-	  // Xoá phòng khỏi server
-	  rooms.delete(roomName);
-
-	  // Cập nhật danh sách phòng
-	  io.emit("rooms:update");
-	});
-
-
+    rooms.delete(roomName);
+    io.emit("rooms:update");
+  });
 
   socket.on("room:leave:denied", () => {
     socket.emit("room:leave:denied");
   });
 
-  // ======================================
-  // 5) DRAW REQUEST
-  // ======================================
+  // ======================
+  // 5. DRAW OFFER
+  // ======================
   socket.on("draw:offer", ({ roomName }) => {
     socket.to(roomName).emit("draw:offer:received");
   });
@@ -191,9 +167,9 @@ io.on("connection", (socket) => {
     socket.to(roomName).emit("draw:rejected");
   });
 
-  // ======================================
-  // 6) GAME UPDATE
-  // ======================================
+  // ======================
+  // 6. GAME UPDATE
+  // ======================
   socket.on("game:state", ({ roomName, fen, history, historyIndex, lastMove, moveId }) => {
     if (!roomName) return;
 
@@ -213,27 +189,30 @@ io.on("connection", (socket) => {
       moveId,
     });
   });
-	socket.on("game:restart", ({ roomName }) => {
-	  const state = rooms.get(roomName);
-	  if (!state) return;
 
-	  const game = new Chess();
-	  state.fen = game.fen();
-	  state.history = [state.fen];
-	  state.historyIndex = 0;
-	  state.lastMove = null;
+  // ======================
+  // 7. RESTART GAME
+  // ======================
+  socket.on("game:restart", ({ roomName }) => {
+    const state = rooms.get(roomName);
+    if (!state) return;
 
-	  io.to(roomName).emit("game:restart", {
-		fen: state.fen,
-		history: state.history,
-		historyIndex: state.historyIndex,
-	  });
-	});
+    const game = new Chess();
+    state.fen = game.fen();
+    state.history = [state.fen];
+    state.historyIndex = 0;
+    state.lastMove = null;
 
+    io.to(roomName).emit("game:restart", {
+      fen: state.fen,
+      history: state.history,
+      historyIndex: state.historyIndex,
+    });
+  });
 
-  // ======================================
-  // 7) CLEAR EMPTY ROOMS
-  // ======================================
+  // ======================
+  // 8. CLEAR EMPTY ROOMS
+  // ======================
   socket.on("rooms:clear", () => {
     let removed = 0;
 
@@ -249,26 +228,22 @@ io.on("connection", (socket) => {
     io.emit("rooms:update");
   });
 
-  // ======================================
-  // 8) DISCONNECT
-  // ======================================
+  // ======================
+  // 9. DISCONNECT
+  // ======================
   socket.on("disconnect", () => {
-    console.log("Client disconnected:", socket.id);
-
     for (const [roomName] of rooms.entries()) {
       const room = io.sockets.adapter.rooms.get(roomName);
+
       if (!room || room.size === 0) {
         rooms.delete(roomName);
         io.emit("rooms:update");
         continue;
       }
+
       if (room.size === 1) {
         io.to(roomName).emit("room:left");
       }
     }
   });
-});
-
-httpServer.listen(3001, () =>
-  console.log("Server chạy tại http://localhost:3001")
-);
+}
