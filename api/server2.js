@@ -5,7 +5,7 @@ import express from "express";
 import cors from "cors";
 
 import rooms from "./roomManager.js";
-import { setupChessHandlers } from "./handlers/chessHandler.js";
+import { attachXiangqiHandlers } from "./xiangqiHandler.js";
 
 const app = express();
 app.use(cors());
@@ -13,11 +13,11 @@ app.use(cors());
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: "*" } });
 
+// GẮN HANDLER CỜ TƯỚNG MỘT LẦN DUY NHẤT
+attachXiangqiHandlers(io);
+
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
-
-  // Gắn handler cờ vua
-  setupChessHandlers(io, socket, rooms);
 });
 
 httpServer.listen(3001, () => {

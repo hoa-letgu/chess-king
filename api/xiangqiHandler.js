@@ -1,6 +1,7 @@
 // server/xiangqiHandler.js
-import { boardToFen, fenToBoard } from "xiangqiFen.js";
-import { initialBoard } from "initialBoard.js";
+import { boardToFen, fenToBoard } from "./xfengenerator.js";
+import { initialBoard } from "./initialBoard.js";
+
 
 /**
  * Trạng thái 1 phòng cờ tướng
