@@ -16,6 +16,7 @@ export function useXiangqiBot({
   setBotThinking,
   historyKeys,
   pausedAfterUndo,      // ⭐ BOT sẽ dừng sau undo / redo
+  gameOver,   
   depth = 3,
 }: {
   mode: "human" | "bot";
@@ -36,10 +37,17 @@ export function useXiangqiBot({
 
   historyKeys: string[];
   pausedAfterUndo: boolean;
+  gameOver: boolean; 
   depth?: number;
 }) {
 
   useEffect(() => {
+	   // ================================
+  // 0) VÁN ĐÃ KẾT THÚC → TUYỆT ĐỐI KHÔNG CHẠY BOT
+  // ================================
+   if (gameOver) return;
+
+
     // ================================
     // 1) Không phải chế độ BOT → thoát
     // ================================
@@ -89,6 +97,7 @@ export function useXiangqiBot({
     botThinking,
     pausedAfterUndo,  // ⭐ thêm vào dependency list
     historyKeys,
-    depth
+    depth,
+	gameOver,   // ⭐ BẮT BUỘC
   ]);
 }
