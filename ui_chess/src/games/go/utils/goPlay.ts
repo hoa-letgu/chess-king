@@ -3,24 +3,41 @@ import type { Board, Stone } from "./rules";
 import { opposite } from "./rules";
 import { removeDeadGroups, getGroup } from "./liberties";
 
+export type PlayResult = {
+  board: Board;
+  captured: boolean;
+};
+
 export function playMove(
   board: Board,
   r: number,
   c: number,
-  color: Stone
-): Board | null {
+  color: Exclude<Stone, null>
+): PlayResult | null {
+  // ❌ ô đã có quân
   if (board[r][c] !== null) return null;
 
-  const next = board.map(row => [...row]);
+  // clone board
+  const next: Board = board.map(row => [...row]);
   next[r][c] = color;
 
-  // ăn đối phương
-  const enemy = opposite(color as any);
+  const enemy = opposite(color);
+
+  // ăn quân đối phương
+  const beforeKey = JSON.stringify(next);
   const after = removeDeadGroups(next, enemy);
+  const afterKey = JSON.stringify(after);
 
-  // suicide check
-  const g = getGroup(after, r, c);
-  if (g.liberties === 0) return null;
+  const captured = beforeKey !== afterKey;
 
-  return after;
+  // suicide check (sau capture)
+  const group = getGroup(after, r, c);
+  if (!group || group.liberties === 0) {
+    return null;
+  }
+
+  return {
+    board: after,
+    captured,
+  };
 }

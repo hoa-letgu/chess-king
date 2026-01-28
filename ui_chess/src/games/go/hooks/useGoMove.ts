@@ -1,6 +1,6 @@
-// src/games/go/hooks/useGoMove.ts
 import type { Board, Stone } from "../utils/rules";
 import { boardToKey } from "../utils/boardKey";
+import { playMove } from "../utils/goPlay";
 
 export function useGoMove({
   board,
@@ -13,25 +13,31 @@ export function useGoMove({
 }: {
   board: Board;
   turn: Exclude<Stone, null>;
-  playerColor: Exclude<Stone, null>;   // ⭐ THÊM
+  playerColor: Exclude<Stone, null>;
   setBoard: (b: Board) => void;
   setTurn: (s: Exclude<Stone, null>) => void;
   history: string[];
   setHistory: (h: string[]) => void;
 }) {
   const handleClick = (r: number, c: number) => {
-    // ❌ không phải lượt người → cấm click
+    // ❌ không phải lượt người
     if (turn !== playerColor) return;
 
+    // ❌ ô đã có quân
     if (board[r][c] !== null) return;
 
-    const next = board.map(row => [...row]);
-    next[r][c] = turn;
+    // ✅ thử đánh (đã xử lý capture + suicide)
+    const next = playMove(board, r, c, turn);
+    if (!next) return;
 
     const key = boardToKey(next);
 
-    if (history.length >= 2 && history[history.length - 2] === key) {
-      return; // KO rule
+    // ✅ SIMPLE KO
+    if (
+      history.length >= 2 &&
+      key === history[history.length - 2]
+    ) {
+      return;
     }
 
     setBoard(next);

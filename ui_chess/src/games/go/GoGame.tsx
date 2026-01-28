@@ -1,110 +1,187 @@
-import React, { useState, useEffect } from "react";
-import type { Stone, Board } from "./utils/rules";
-import { createBoard } from "./utils/rules";
-import { scoreBoard } from "./utils/score";
-import { boardToKey } from "./utils/boardKey";
+import React, { useEffect, useState } from "react";
+import type { Stone } from "./utils/rules";
+import {
+  createInitialState,
+  applyMove,
+  type GoState,
+} from "./engine/goEngine";
+import { thinkBotMove } from "./bot/goBot";
 
 import { GoBoard } from "./components/GoBoard";
-import { useGoMove } from "./hooks/useGoMove";
-import { useGoBot } from "./hooks/useGoBot"; // ⭐ THÊM
+import { RoomSettingsGo } from "./components/RoomSettingsGo";
+import { PopupModal } from "@/games/go/components/PopupModal";
+import { useSocket } from "@/context/SocketProvider";
 
 const SIZE = 19;
 
-// ======================
-// 🔥 CẤU HÌNH BOT
-// ======================
-const PLAYER_COLOR: Exclude<Stone, null> = "black";
-const BOT_COLOR: Exclude<Stone, null> = "white";
-// ======================
-
 export default function GoGame({ onExit }: { onExit: () => void }) {
-  const [board, setBoard] = useState<Board>(() => createBoard(SIZE));
-  const [turn, setTurn] = useState<Exclude<Stone, null>>(PLAYER_COLOR);
+  const socket = useSocket();
 
-  // KO history
-  const [history, setHistory] = useState<string[]>([
-    boardToKey(createBoard(SIZE)),
-  ]);
+  // ================= MODE =================
+  const [mode, setMode] = useState<"bot" | "online" | null>(null);
+  const [showSettings, setShowSettings] = useState(true);
 
-  // pass + end game
-  const [passCount, setPassCount] = useState(0);
-  const [gameOver, setGameOver] = useState(false);
+  // ================= GAME STATE =================
+  const [state, setState] = useState<GoState>(() =>
+    createInitialState(SIZE)
+  );
+  const { board, turn } = state;
 
-  // ======================
-  // 👤 NGƯỜI CHƠI
-  // ======================
-  const { handleClick } = useGoMove({
-    board,
-    turn,
-    playerColor: PLAYER_COLOR, // ⭐ RẤT QUAN TRỌNG
-    setBoard,
-    setTurn,
-    history,
-    setHistory,
-  });
+  // ================= ONLINE =================
+  const [roomId, setRoomId] = useState("");
+  const [playerColor, setPlayerColor] =
+    useState<Exclude<Stone, null>>("black");
+  const [roomList, setRoomList] = useState<any[]>([]);
+  const [newRoomName, setNewRoomName] = useState("");
 
-  // ======================
-  // 🤖 BOT
-  // ======================
-  useGoBot({
-    enabled: !gameOver,
-    board,
-    turn,
-    botColor: BOT_COLOR,
-    setBoard,
-    setTurn,
-  });
+  // ================= UI =================
+  const [popup, setPopup] = useState<any>({ type: null });
 
-  // 2 PASS → kết thúc ván
+  // ================= RESET =================
+  const resetGame = () => {
+    setState(createInitialState(SIZE));
+  };
+
+  // ================= LOCAL MOVE (BOT / OFFLINE) =================
+  const handleLocalMove = (r: number, c: number) => {
+    if (mode !== "bot") return;
+    if (turn !== "black") return;
+
+    const res = applyMove(state, r, c);
+    if (res.ok) setState(res.state);
+  };
+
+  // ================= ONLINE MOVE =================
+  const handleOnlineMove = (r: number, c: number) => {
+    if (mode !== "online") return;
+    if (!socket || !roomId) return;
+    if (turn !== playerColor) return;
+
+    socket.emit("go:move", { roomId, r, c });
+  };
+
+  // ================= BOT MOVE =================
   useEffect(() => {
-    if (passCount >= 2) setGameOver(true);
-  }, [passCount]);
+    if (mode !== "bot") return;
+    if (turn !== "white") return;
 
+    const t = setTimeout(() => {
+      const move = thinkBotMove(state);
+      if (!move) return;
+
+      const res = applyMove(state, move[0], move[1]);
+      if (res.ok) setState(res.state);
+    }, 250);
+
+    return () => clearTimeout(t);
+  }, [turn, state, mode]);
+
+  // ================= SOCKET =================
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on("go:rooms:list:response", setRoomList);
+
+    socket.on("go:room:joined", ({ seat, state }) => {
+      setRoomId(state.roomId);
+      setPlayerColor(seat);
+      setState(state);
+      setShowSettings(false);
+      setMode("online");
+    });
+
+    socket.on("go:state", (state: GoState) => {
+      setState(state);
+    });
+
+    socket.on("go:player_left", () => {
+      setPopup({
+        type: "info",
+        message: "Đối thủ đã rời phòng. Bạn thắng!",
+        onAccept: () => {
+          setPopup({ type: null });
+          setMode(null);
+          setRoomId("");
+          resetGame();
+          setShowSettings(true);
+        },
+      });
+    });
+  socket.on("go:room:closed", ({ message }) => {
+    setPopup({
+      type: "info",
+      message,
+      onAccept: () => {
+        setPopup({ type: null });
+        setMode(null);           // quay về chọn chế độ
+        setRoomId("");
+        resetGame();
+        setShowSettings(true);   // hiện lại chọn phòng
+      },
+    });
+  });
+
+    return () => {
+      socket.off("go:rooms:list:response");
+      socket.off("go:room:joined");
+      socket.off("go:state");
+      socket.off("go:player_left");
+	  socket.off("go:room:closed");
+    };
+  }, [socket]);
+
+  // ================= RENDER =================
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center gap-4 p-4">
-      <h1 className="text-xl font-bold">
-        Cờ Vây – Lượt:{" "}
-        {turn === "black" ? "⚫ Đen" : "⚪ Trắng"}
-        {turn === BOT_COLOR && " (BOT đang suy nghĩ...)"}
+    <div className="min-h-screen bg-slate-900 text-white p-4">
+      <h1 className="text-xl font-bold mb-2">
+        Cờ Vây –{" "}
+        {mode === "bot"
+          ? "🤖 BOT"
+          : mode === "online"
+          ? "🌐 ONLINE"
+          : "—"}{" "}
+        – {turn === "black" ? "⚫ Đen" : "⚪ Trắng"}
       </h1>
 
-      {/* BÀN CỜ */}
-      <GoBoard board={board} onClick={handleClick} />
+      <GoBoard
+        board={board}
+        onClick={mode === "online" ? handleOnlineMove : handleLocalMove}
+      />
 
-      {/* PASS */}
-      {!gameOver && turn === PLAYER_COLOR && (
+      <div className="flex gap-3 mt-4">
         <button
-          onClick={() => {
-            setPassCount(p => p + 1);
-            setTurn(BOT_COLOR);
-          }}
+          onClick={resetGame}
           className="px-4 py-2 bg-slate-700 rounded"
         >
-          ⏭ PASS
+          🔄 Reset
         </button>
-      )}
 
-      {/* KẾT QUẢ */}
-      {gameOver && (() => {
-        const s = scoreBoard(board);
-        return (
-          <div className="bg-slate-800 p-4 rounded mt-4 w-full max-w-md">
-            <h2 className="font-bold mb-2">🏁 KẾT QUẢ</h2>
-            <p>⚫ Đen: {s.territoryBlack + s.stonesBlack}</p>
-            <p>⚪ Trắng: {s.territoryWhite + s.stonesWhite}</p>
-            <p className="mt-2 text-slate-400 text-sm">
-              (Luật Trung Quốc – area scoring)
-            </p>
-          </div>
-        );
-      })()}
+        <button
+          onClick={onExit}
+          className="px-4 py-2 bg-slate-700 rounded"
+        >
+          ◀ Thoát
+        </button>
+      </div>
 
-      <button
-        onClick={onExit}
-        className="px-4 py-2 bg-slate-700 rounded mt-4"
-      >
-        ◀ Thoát
-      </button>
+      {/* ============ SETTINGS / ROOMS ============ */}
+      <RoomSettingsGo
+        showSettings={showSettings}
+        setShowSettings={setShowSettings}
+        mode={mode}
+        setMode={setMode}
+        newRoomName={newRoomName}
+        setNewRoomName={setNewRoomName}
+        roomList={roomList}
+        loadRooms={() => socket?.emit("go:rooms:list")}
+        socket={socket}
+        setRoomId={setRoomId}
+        resetBoardState={resetGame}
+        isPlaying={!!mode}
+      />
+
+      {/* ============ POPUP ============ */}
+      <PopupModal popup={popup} setPopup={setPopup} />
     </div>
   );
 }

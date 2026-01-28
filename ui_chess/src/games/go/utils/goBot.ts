@@ -1,87 +1,19 @@
-// src/games/go/utils/goBot.ts
-import type { Board, Stone } from "./rules";
-import { opposite } from "./rules";
-import { generateCandidates } from "./goCandidates";
-import { playMove } from "./goPlay";
-import { evaluateBoard } from "./goEval";
-import { boardToKey } from "./ko";
-
-function negamax(
-  board: Board,
-  side: Stone,
-  bot: Stone,
-  depth: number,
-  alpha: number,
-  beta: number,
-  history: Set<string>
-): number {
-  if (depth === 0) {
-    return evaluateBoard(board, bot);
-  }
-
-  const moves = generateCandidates(board);
-  let best = -Infinity;
-
-  for (const {r,c} of moves) {
-    const next = playMove(board, r, c, side);
-    if (!next) continue;
-
-    const key = boardToKey(next);
-    if (history.has(key)) continue;
-
-    history.add(key);
-    const score =
-      -negamax(
-        next,
-        opposite(side),
-        bot,
-        depth - 1,
-        -beta,
-        -alpha,
-        history
-      );
-    history.delete(key);
-
-    best = Math.max(best, score);
-    alpha = Math.max(alpha, score);
-    if (alpha >= beta) break; // PRUNE
-  }
-
-  return best;
-}
+import { applyMove } from "./goEngine";
+import type { GoState } from "./goEngine";
+import type { Stone } from "./rules";
 
 export function findBotMove(
-  board: Board,
-  bot: Stone,
-  depth = 3
-): { r:number;c:number } | null {
-  const moves = generateCandidates(board);
-  let bestScore = -Infinity;
-  let best: any = null;
+  state: GoState,
+  bot: Stone
+): { r: number; c: number } | null {
+  const size = state.board.length;
 
-  const history = new Set<string>();
-  history.add(boardToKey(board));
-
-  for (const mv of moves) {
-    const next = playMove(board, mv.r, mv.c, bot);
-    if (!next) continue;
-
-    const score =
-      -negamax(
-        next,
-        opposite(bot),
-        bot,
-        depth - 1,
-        -Infinity,
-        Infinity,
-        history
-      );
-
-    if (score > bestScore) {
-      bestScore = score;
-      best = mv;
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      const res = applyMove(state, r, c);
+      if (res.ok) return { r, c };
     }
   }
 
-  return best;
+  return null;
 }

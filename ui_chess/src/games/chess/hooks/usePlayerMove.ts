@@ -49,6 +49,7 @@ export function usePlayerMove({
     // BOT mode
     if (mode === "bot" && game.turn() !== playerColor) return;
 
+
     // ONLINE mode
     if (mode === "online") {
       if (!onlineColor) return; 

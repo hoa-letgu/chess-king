@@ -2,5 +2,7 @@
 import type { Board } from "./rules";
 
 export function boardToKey(board: Board): string {
-  return board.map(r => r.map(c => c ?? ".").join("")).join("/");
+  return board
+    .map(row => row.map(c => (c === null ? "." : c[0])).join(""))
+    .join("/");
 }

@@ -2,7 +2,6 @@
 import { Chess, Move } from "chess.js";
 import { openingTree } from "./openingTree";
 import { ecoOpenings } from "./ecoTree";
-import { orderMovesHeuristic } from "./moveHeuristics";
 
 // --------------------------------------
 // 1) TYPE SQUARE
@@ -33,30 +32,6 @@ export const PIECE_VALUES: Record<string, number> = {
 const MATE_SCORE = 10_000_000;
 const FILES = "abcdefgh";
 
-function filterUnsafeKingMoves(game: Chess, moves: Move[]): Move[] {
-  const ply = game.history().length;
-
-  // Sau khai cuộc thì không cần cấm
-  if (ply >= 12) return moves;
-
-  // Nếu đang bị chiếu → phải cho vua đi
-  if (game.inCheck()) return moves;
-
-  const filtered = moves.filter(mv => {
-    // Cấm vua đi sớm (trừ nhập thành)
-    if (
-      mv.piece === "k" &&
-      mv.san !== "O-O" &&
-      mv.san !== "O-O-O"
-    ) {
-      return false;
-    }
-    return true;
-  });
-
-  // Nếu lọc xong mà không còn nước nào → trả lại danh sách gốc
-  return filtered.length ? filtered : moves;
-}
 
 // --------------------------------------
 // 3) EVAL THÔNG MINH
@@ -109,16 +84,6 @@ export function evaluateBoard(game: Chess): number {
       const final = base + posScore;
 
       score += piece.color === "w" ? final : -final;
-
-      // ===== PASSED / PROMOTION PAWN BONUS =====
-      if (piece.type === "p") {
-        if (piece.color === "w" && rank === 7) {
-          score += 400;
-        }
-        if (piece.color === "b" && rank === 2) {
-          score -= 400;
-        }
-      }
     }
   }
 
@@ -128,7 +93,6 @@ export function evaluateBoard(game: Chess): number {
 
   return score;
 }
-
 
 
 // --------------------------------------
@@ -201,11 +165,7 @@ export function negamax(
   }
 
   let best = -Infinity;
-let moves = game.moves({ verbose: true }) as Move[];
-moves = filterUnsafeKingMoves(game, moves);
-moves = orderMovesHeuristic(game, moves);
-
-
+  const moves = orderMoves(game, game.moves({ verbose: true }) as Move[]);
 
   for (const mv of moves) {
     game.move(mv);
@@ -270,11 +230,7 @@ export function detectOpening(history: string[]) {
 // 9) FIND BEST MOVE WITH OPENING PRIORITY + ECO
 // ======================================================
 export function findBestMove(game: Chess, depth: number): Move | null {
-let moves = game.moves({ verbose: true }) as Move[];
-moves = filterUnsafeKingMoves(game, moves);
-moves = orderMovesHeuristic(game, moves);
-
-
+  const moves = game.moves({ verbose: true }) as Move[];
   if (!moves.length) return null;
 
   // ----- Lịch sử SAN → algebraic -----
@@ -300,9 +256,7 @@ moves = orderMovesHeuristic(game, moves);
   let bestScore = -Infinity;
   let bestMoves: Move[] = [];
 
-  const ordered = orderMovesHeuristic(game, moves);
-
-
+  const ordered = orderMoves(game, moves);
 
   for (const mv of ordered) {
     game.move(mv);

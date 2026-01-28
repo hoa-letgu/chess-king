@@ -1,7 +1,12 @@
 // src/games/xiangqi/components/XiangqiBoard.tsx
 import type { CSSProperties } from "react";
 import type { XiangqiPieceKey } from "@/games/xiangqi/utils/pieces";
-import { XIANGQI_PIECE_IMG, isXiangqiPieceKey } from "@/games/xiangqi/utils/pieces";
+import {
+  XIANGQI_PIECE_IMG,
+  isXiangqiPieceKey,
+} from "@/games/xiangqi/utils/pieces";
+
+/* ================= TYPES ================= */
 
 type LastMove = {
   from: string;
@@ -10,7 +15,7 @@ type LastMove = {
 
 type MovingPiece = {
   piece: XiangqiPieceKey;
-  square: string;        // ô hiện tại của quân đang bay (from → to)
+  square: string;
 };
 
 type Props = {
@@ -21,10 +26,20 @@ type Props = {
   viewSide?: "red" | "black";
   onClick?: (square: string) => void;
 
-  // ⭐ Animation
   movingPiece?: MovingPiece | null;
-  hideSquare?: string | null;   // ẩn quân tĩnh tại ô này (quân đang bay)
+  hideSquare?: string | null;
 };
+
+/* ================= CONSTANTS ================= */
+
+// canh theo ảnh chineseboard.png (có viền gỗ)
+const OFFSET_X = 3;    // %
+const OFFSET_Y = 6.5;  // %
+
+const BOARD_W = 100 - OFFSET_X * 2; // phần lưới thật
+const BOARD_H = 100 - OFFSET_Y * 2;
+
+/* ================= COMPONENT ================= */
 
 export function XiangqiBoard({
   board,
@@ -41,26 +56,24 @@ export function XiangqiBoard({
 
   const squares: JSX.Element[] = [];
 
-  // helper: square → {left, top} %
+  /* ===== square -> % position (GIAO ĐIỂM) ===== */
   const squareToPos = (sq: string) => {
     const file = sq[0];
     const rank = Number(sq.slice(1)); // 1..10
 
-    const c = files.indexOf(file);    // 0..8
-    const r = 10 - rank;             // 0..9 (trên -> dưới)
+    const c = files.indexOf(file); // 0..8
+    const r = 10 - rank;           // 0..9 (top -> bottom)
 
-    const vr = isRedView ? r : 9 - r;   // view row
-    const vc = isRedView ? c : 8 - c;   // view col
+    const vr = isRedView ? r : 9 - r;
+    const vc = isRedView ? c : 8 - c;
 
     return {
-      left: (vc * 100) / 9,
-      top: (vr * 100) / 10,
+      left: OFFSET_X + (vc * BOARD_W) / 8,
+      top: OFFSET_Y + (vr * BOARD_H) / 9,
     };
   };
 
-  // ================================
-  // RENDER 10 x 9 Ô (XOAY THEO VIEW)
-  // ================================
+  /* ===== RENDER CLICK ZONES ===== */
   for (let vr = 0; vr < 10; vr++) {
     for (let vc = 0; vc < 9; vc++) {
       const r = isRedView ? vr : 9 - vr;
@@ -79,8 +92,8 @@ export function XiangqiBoard({
 
       const style: CSSProperties = {};
 
-      if (isLastFrom) style.background = "rgba(255, 215, 0, 0.35)";
-      if (isLastTo) style.background = "rgba(255, 220, 0, 0.55)";
+      if (isLastFrom) style.background = "rgba(255,215,0,0.35)";
+      if (isLastTo) style.background = "rgba(255,220,0,0.55)";
 
       if (isSelected) {
         style.outline = "3px solid rgba(80,180,255,0.9)";
@@ -100,10 +113,11 @@ export function XiangqiBoard({
           onClick={() => onClick?.(square)}
           style={{
             position: "absolute",
-            width: `${100 / 9}%`,
-            height: `${100 / 10}%`,
-            left: `${(vc * 100) / 9}%`,
-            top: `${(vr * 100) / 10}%`,
+            width: `${BOARD_W / 8}%`,
+            height: `${BOARD_H / 9}%`,
+            left: `${OFFSET_X + (vc * BOARD_W) / 8}%`,
+            top: `${OFFSET_Y + (vr * BOARD_H) / 9}%`,
+            transform: "translate(-50%, -50%)",
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
@@ -117,8 +131,8 @@ export function XiangqiBoard({
             <img
               src={XIANGQI_PIECE_IMG[pieceKey]}
               style={{
-                width: "80%",
-                height: "80%",
+                width: "75%",
+                height: "75%",
                 pointerEvents: "none",
               }}
             />
@@ -128,6 +142,7 @@ export function XiangqiBoard({
     }
   }
 
+  /* ===== ANIMATION BAY QUÂN ===== */
   const renderMovingPiece = () => {
     if (!movingPiece) return null;
 
@@ -138,10 +153,11 @@ export function XiangqiBoard({
         src={XIANGQI_PIECE_IMG[movingPiece.piece]}
         style={{
           position: "absolute",
-          width: `${100 / 9}%`,
-          height: `${100 / 10}%`,
+          width: `${BOARD_W / 8}%`,
+          height: `${BOARD_H / 9}%`,
           left: `${left}%`,
           top: `${top}%`,
+          transform: "translate(-50%, -50%)",
           transition: "left 180ms linear, top 180ms linear",
           pointerEvents: "none",
           zIndex: 50,
@@ -150,6 +166,7 @@ export function XiangqiBoard({
     );
   };
 
+  /* ===== ROOT ===== */
   return (
     <div
       className="relative mx-auto border rounded-lg overflow-hidden shadow"
