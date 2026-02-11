@@ -607,7 +607,9 @@ export function findBestMoveTS(
     }
 
     // deadline guard (ngoài shouldStop để dừng sớm hơn 1 chút)
-    if (Date.now() >= deadline) break;
+    // nếu muốn ép đủ depth (không khuyến khích trên UI thread)
+	if (Date.now() >= deadline && depth >= (opts.preferDepth ?? 0)) break;
+
   }
 
   const pvUci = buildPvFromTT(new Chess(rootFen), state.tt, 16);

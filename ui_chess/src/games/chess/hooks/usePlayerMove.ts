@@ -36,6 +36,8 @@ export function usePlayerMove({
 	  setIsAnimating(false);
 	};
   const handleSquareClick = (square: string) => {
+	if (mode === "botvsbot") return; // ignore click
+
 	if (isJoiningRef.current) {
       console.log("⛔ Đang join – bỏ click");
       return;

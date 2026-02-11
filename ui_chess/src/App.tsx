@@ -1,50 +1,82 @@
-// src/App.tsx
 import React, { useState } from "react";
 import ChessGame from "@/games/chess/ChessGame";
 import XiangqiGame from "@/games/xiangqi/XiangqiGame";
 import GoGame from "@/games/go/GoGame";
 import GomokuGame from "@/games/gomoku/GomokuGame";
+import GameCard from "@/components/game-card";
 
 export default function App() {
-  const [game, setGame] = useState<null | string>(null);
+  const [selectedGame, setSelectedGame] = useState<string | null>(null);
+  const [bg, setBg] = useState("/home/1920x720.png");
+
+ const games = [
+  {
+    id: "chess",
+    title: "Cờ Vua",
+    description: "Trò chơi trí tuệ kinh điển của phương Tây.",
+    image: "/chess/bgcovua.png",
+    bg: "/chess/bgcovua.png",
+  },
+  {
+    id: "xiangqi",
+    title: "Cờ Tướng",
+    description: "Chiến thuật điều binh khiển tướng phương Đông.",
+    image: "/xiangqi/bgcotuong.png",
+    bg: "/xiangqi/bgcotuong.png",
+  },
+  {
+    id: "go",
+    title: "Cờ Vây",
+    description: "Nghệ thuật bao vây và chiếm lĩnh lãnh thổ.",
+    image: "/go/bgcovay.png",
+    bg: "/go/bgcovay.png",
+  },
+  {
+    id: "gomoku",
+    title: "Cờ Caro",
+    description: "Nối 5 quân cờ để giành chiến thắng.",
+    image: "/gomoku/bgxo.png",
+    bg: "/gomoku/bgxo.png",
+  },
+];
 
   const renderGame = () => {
-    switch (game) {
+    switch (selectedGame) {
       case "chess":
-        return <ChessGame onExit={() => setGame(null)} />;
+        return <ChessGame onExit={() => setSelectedGame(null)} />;
       case "xiangqi":
-        return <XiangqiGame onExit={() => setGame(null)} />;
+        return <XiangqiGame onExit={() => setSelectedGame(null)} />;
       case "go":
-        return <GoGame onExit={() => setGame(null)} />;
+        return <GoGame onExit={() => setSelectedGame(null)} />;
       case "gomoku":
-        return <GomokuGame onExit={() => setGame(null)} />;
+        return <GomokuGame onExit={() => setSelectedGame(null)} />;
       default:
         return null;
     }
   };
 
-  if (game) return renderGame();
+  if (selectedGame) return renderGame();
 
-  // MENU CHỌN GAME
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center gap-6">
-      <h1 className="text-3xl font-bold mb-4">Chọn trò chơi</h1>
-
-      <button className="px-6 py-3 bg-blue-700 rounded" onClick={() => setGame("chess")}>
-        ♟ Cờ vua
-      </button>
-
-      <button className="px-6 py-3 bg-red-700 rounded" onClick={() => setGame("xiangqi")}>
-        ♜ Cờ tướng
-      </button>
-
-      <button className="px-6 py-3 bg-green-700 rounded" onClick={() => setGame("go")}>
-        ⚪⚫ Cờ vây
-      </button>
-
-      <button className="px-6 py-3 bg-yellow-600 rounded" onClick={() => setGame("gomoku")}>
-        ✖ Caro (Gomoku)
-      </button>
+    <div
+      className="min-h-screen text-slate-50 bg-cover bg-center bg-no-repeat transition-all duration-500"
+      style={{ backgroundImage: `url('${bg}')` }}
+    >
+      <div className="min-h-screen bg-black/70">
+        <div className="container mx-auto px-4 py-16 md:py-24">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 max-w-5xl mx-auto">
+          {games.map((game) => (
+			 <GameCard
+			  key={game.id}
+			  title={game.title}
+			  description={game.description}
+			  image={game.bg}
+			  onClick={() => setSelectedGame(game.id)}
+			/>
+			))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

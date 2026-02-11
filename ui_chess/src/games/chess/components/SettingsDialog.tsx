@@ -26,17 +26,32 @@ export function SettingsDialog({
 
         <div className="space-y-6">
           {/* Toggle BOT / Online */}
-          <div className="flex items-center justify-between bg-slate-800 p-3 rounded-md">
-            <span className={mode === "bot" ? "text-green-400" : "text-slate-400"}>BOT</span>
-            <Switch
-              checked={mode === "online"}
-              onCheckedChange={(v) => {
-                setMode(v ? "online" : "bot");
-                if (!v) setRoomId("");
-              }}
-            />
-            <span className={mode === "online" ? "text-green-400" : "text-slate-400"}>ONLINE</span>
-          </div>
+       <div className="flex items-center gap-2 bg-slate-800 p-3 rounded-md">
+			  <Button
+				variant={mode === "bot" ? "default" : "outline"}
+				onClick={() => { setMode("bot"); setRoomId(""); }}
+				className="flex-1"
+			  >
+				BOT
+			  </Button>
+
+			  <Button
+				variant={mode === "botvsbot" ? "default" : "outline"}
+				onClick={() => { setMode("botvsbot"); setRoomId(""); }}
+				className="flex-1"
+			  >
+				BOT vs BOT
+			  </Button>
+
+			  <Button
+				variant={mode === "online" ? "default" : "outline"}
+				onClick={() => setMode("online")}
+				className="flex-1"
+			  >
+				ONLINE
+			  </Button>
+			</div>
+
 
           {mode === "online" && (
             <>

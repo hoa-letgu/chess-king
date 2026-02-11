@@ -31,7 +31,8 @@ export default function ChessGame({ onExit }: { onExit: () => void }) {
   // =======================
   // STATES
   // =======================
-  const [mode, setMode] = useState<"bot" | "online">("bot");
+  const [mode, setMode] = useState<"bot" | "online" | "botvsbot">("bot");
+
   const [fen, setFen] = useState(START_FEN);
   const [history, setHistory] = useState([START_FEN]);
   const [historyIndex, setHistoryIndex] = useState(0);
@@ -80,7 +81,11 @@ export default function ChessGame({ onExit }: { onExit: () => void }) {
     onReject: null,
   });
 
-  const viewColor = mode === "bot" ? playerColor : onlineColor ?? "w";
+  const viewColor =
+  mode === "bot" ? playerColor :
+  mode === "online" ? (onlineColor ?? "w") :
+  "w"; // botvsbot
+
 
   // ✅ mỗi khi đổi botPlaysWhite => cập nhật playerColor
   useEffect(() => {
@@ -256,25 +261,32 @@ export default function ChessGame({ onExit }: { onExit: () => void }) {
   // =======================
   // BOT HOOK
   // =======================
-  useChessBot({
-    mode,
-    playerColor,
-    botDepth,
-    fen,
-    game: gameRef.current,
-    history,
-    historyIndex,
-    setFen,
-    setHistory,
-    setHistoryIndex,
-    botThinking,
-    setBotThinking,
-    setLastMove,
-    isUndoingRef,
-    botPaused,
-    botPlaysWhite,
-	setBotInfo,
-  });
+	useChessBot({
+	  mode,
+	  playerColor,
+	  botDepth,
+	  fen,
+	  game: gameRef.current,
+	  history,
+	  historyIndex,
+	  setFen,
+	  setHistory,
+	  setHistoryIndex,
+	  botThinking,
+	  setBotThinking,
+	  setLastMove,
+	  isUndoingRef,
+	  botPaused,
+
+	  // ✅ NEW:
+	  botSide:
+		mode === "botvsbot"
+		  ? "both"
+		  : (botPlaysWhite ? "w" : "b"),
+
+	  setBotInfo,
+	});
+
 
   // =======================
   // ONLINE ROOM HOOK
@@ -513,35 +525,39 @@ export default function ChessGame({ onExit }: { onExit: () => void }) {
           />
 			
           {/* BOT CONTROLS */}
-          {mode === "bot" && (
-            <div className="flex justify-center gap-2 mt-4 flex-wrap">
-              <Button onClick={handleUndo}>Undo</Button>
-              <Button onClick={handleRedo}>Redo</Button>
-              <Button onClick={resetBoardState}>Reset</Button>
+          {(mode === "bot" || mode === "botvsbot") && (
+			  <div className="flex justify-center gap-2 mt-4 flex-wrap">
+				<Button onClick={handleUndo}>Undo</Button>
+				<Button onClick={handleRedo}>Redo</Button>
+				<Button onClick={resetBoardState}>Reset</Button>
 
-              {!gameStarted ? (
-                <Button
-                  onClick={() => {
-                    setGameStarted(true);
-                    setBotPausedUser(false);
-                    // không cần setFen(f=>f)
-                    // bot effect sẽ chạy vì botPaused đổi
-                  }}
-                >
-                  ▶ Bắt đầu
-                </Button>
-              ) : botPausedUser ? (
-                <Button onClick={() => setBotPausedUser(false)}>▶ Tiếp tục BOT</Button>
-              ) : (
-                <Button onClick={() => setBotPausedUser(true)}>⏸ Pause BOT</Button>
-              )}
-            </div>
-          )}
+				{!gameStarted ? (
+				  <Button
+					onClick={() => {
+					  setGameStarted(true);
+					  setBotPausedUser(false);
+					}}
+				  >
+					▶ Bắt đầu
+				  </Button>
+				) : botPausedUser ? (
+				  <Button onClick={() => setBotPausedUser(false)}>
+					▶ Tiếp tục
+				  </Button>
+				) : (
+				  <Button onClick={() => setBotPausedUser(true)}>
+					⏸ Tạm dừng
+				  </Button>
+				)}
+			  </div>
+			)}
+
 
           <div className="text-center text-sm mt-2 text-slate-300">
             Lượt hiện tại: {currentTurn === "w" ? "Trắng" : "Đen"}
-            {mode === "bot" && botThinking && " • BOT đang tính…"}
-            {mode === "bot" && !gameStarted && " • (Chưa bắt đầu)"}
+            {(mode === "bot" || mode === "botvsbot") && botThinking && " • BOT đang tính…"}
+			{(mode === "bot" || mode === "botvsbot") && !gameStarted && " • (Chưa bắt đầu)"}
+
           </div>
 		  
 		  {/* BOT INFO PANEL */}

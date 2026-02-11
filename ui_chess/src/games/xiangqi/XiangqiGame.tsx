@@ -475,7 +475,7 @@ const clearDrawToast = () => {
   // ============================================
   return (
    <>
-    <div className="mx-auto max-w-lg">
+    <div className="mx-auto w-full max-w-2xl">
 <div className="text-center text-slate-400 text-sm mb-1">
   Chế độ: {mode === "bot" ? "🤖 Đánh với BOT" : "🌍 Online"}
 </div>

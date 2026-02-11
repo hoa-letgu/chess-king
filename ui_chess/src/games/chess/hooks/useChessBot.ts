@@ -6,7 +6,7 @@ import { createEngineCache, findBestMoveTS } from "@/games/chess/utils/tsEngine"
 const isInCheck = (g: any) => (g.isCheck?.() ?? g.inCheck?.() ?? false);
 
 type UseChessBotArgs = {
-  mode: "bot" | "online";
+  mode: "bot" | "online" | "botvsbot";
   playerColor: "w" | "b";
   botDepth: number;
   fen: string;
@@ -22,10 +22,12 @@ type UseChessBotArgs = {
   isUndoingRef?: React.MutableRefObject<boolean>;
   botPaused: boolean;
   timeLimitMs?: number;
-  botPlaysWhite?: boolean;
-  resetKey?: number; // đổi khi reset để clear cache
-  setBotInfo?: (info: any) => void; // ✅ show info lên UI
+
+  botSide?: "w" | "b" | "both";   // ✅ NEW
+  resetKey?: number;
+  setBotInfo?: (info: any) => void;
 };
+
 
 export function useChessBot({
   mode,
@@ -42,11 +44,12 @@ export function useChessBot({
   setLastMove,
   isUndoingRef,
   botPaused,
-  timeLimitMs = 300,
-  botPlaysWhite = true,
+  timeLimitMs = 3600,
+  botSide = "b",          // ✅ default
   resetKey = 0,
-  setBotInfo, // ✅ IMPORTANT: destructure
+  setBotInfo,
 }: UseChessBotArgs) {
+
   const tRef = useRef<number | null>(null);
 
   // khóa chống chạy lặp
@@ -63,32 +66,33 @@ export function useChessBot({
     setBotInfo?.(null);
   }, [resetKey, setBotThinking, setBotInfo]);
 
-  // giữ bản mới nhất để tránh stale closure
-  const latestRef = useRef({
-    mode,
-    playerColor,
-    botDepth,
-    fen,
-    history,
-    historyIndex,
-    botPaused,
-    timeLimitMs,
-    botPlaysWhite,
-  });
+    // giữ bản mới nhất để tránh stale closure
+	const latestRef = useRef({
+	  mode,
+	  playerColor,
+	  botDepth,
+	  fen,
+	  history,
+	  historyIndex,
+	  botPaused,
+	  timeLimitMs,
+	  botSide,
+	});
 
-  useEffect(() => {
-    latestRef.current = {
-      mode,
-      playerColor,
-      botDepth,
-      fen,
-      history,
-      historyIndex,
-      botPaused,
-      timeLimitMs,
-      botPlaysWhite,
-    };
-  }, [mode, playerColor, botDepth, fen, history, historyIndex, botPaused, timeLimitMs, botPlaysWhite]);
+	useEffect(() => {
+	  latestRef.current = {
+		mode,
+		playerColor,
+		botDepth,
+		fen,
+		history,
+		historyIndex,
+		botPaused,
+		timeLimitMs,
+		botSide,
+	  };
+	}, [mode, playerColor, botDepth, fen, history, historyIndex, botPaused, timeLimitMs, botSide]);
+
 
   useEffect(() => {
     if (tRef.current) {
@@ -96,19 +100,19 @@ export function useChessBot({
       tRef.current = null;
     }
 
-    if (mode !== "bot") return;
-    if (isUndoingRef?.current) return;
-    if (botPaused) return;
+    if (mode !== "bot" && mode !== "botvsbot") return;
+	if (isUndoingRef?.current) return;
+	if (botPaused) return;
 
-    try {
-      game.load(fen);
-    } catch {
-      return;
-    }
-    if (game.isGameOver()) return;
+	try { game.load(fen); } catch { return; }
+	if (game.isGameOver()) return;
 
-    const botColor: "w" | "b" = botPlaysWhite ? "w" : "b";
-    if (game.turn() !== botColor) return;
+	const side = botSide; // "w" | "b" | "both"
+	if (side !== "both") {
+	  if (game.turn() !== side) return;
+	}
+	// side === "both" => bot đánh bất kể lượt trắng/đen
+
 
     if (thinkingRef.current) return;
 
@@ -120,11 +124,13 @@ export function useChessBot({
 
       const latest = latestRef.current;
 
-      if (latest.mode !== "bot" || latest.botPaused || isUndoingRef?.current) {
-        thinkingRef.current = false;
-        setBotThinking(false);
-        return;
-      }
+      if ((latest.mode !== "bot" && latest.mode !== "botvsbot") || latest.botPaused || isUndoingRef?.current) {
+
+		  thinkingRef.current = false;
+		  setBotThinking(false);
+		  return;
+		}
+
 
       // fen đã đổi → bỏ lượt này
       if (latest.fen !== fen) {
@@ -135,20 +141,23 @@ export function useChessBot({
 
       const clone = new Chess(latest.fen);
 
-        const depth = Math.max(1, Math.min(1000, latest.botDepth));
+       const depth = Math.max(1, Math.min(20, latest.botDepth)); // 20 là đủ, 1000 vô nghĩa
 
-		// ví dụ: depth 6 ~ 900ms–1400ms tuỳ máy
-		const timeLimitMs = Math.min(
-		  latest.timeLimitMs ?? 1200,
-		  350 + depth * 180
-		);
+		// đảm bảo đủ thời gian cho depth 6
+		const minTimeForDepth = 350 + depth * 180;
+
+		// nếu người dùng set timeLimitMs thấp quá, vẫn nâng lên tối thiểu
+		const timeLimitMs = Math.max(latest.timeLimitMs ?? 1200, minTimeForDepth);
+
 
 
 		const result = findBestMoveTS(clone, {
-		  maxDepth: depth,
-		  timeLimitMs,
-		  cache: cacheRef.current,
-		});
+			  maxDepth: depth,
+			  preferDepth: 6,
+			  timeLimitMs,
+			  cache: cacheRef.current,
+			});
+
 
 
       const best = result.move;
@@ -233,7 +242,7 @@ export function useChessBot({
     playerColor,
     botDepth,
     timeLimitMs,
-    botPlaysWhite,
+    botSide,
     game,
     isUndoingRef,
     setBotThinking,

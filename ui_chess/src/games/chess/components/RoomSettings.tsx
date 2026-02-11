@@ -26,17 +26,44 @@ export function RoomSettings({
 
         <div className="space-y-6">
           {/* MODE SWITCH */}
-       <div className="flex bg-slate-800 p-1 rounded-lg">
-		  <button className={`flex-1 py-2 rounded ${mode==="bot" ? "bg-slate-600 text-white" : "text-slate-400"}`}
-				  onClick={() => { setMode("bot"); resetBoardState(); setRoomId(""); }}>
-			🤖 BOT
-		  </button>
+     
+			<div className="flex bg-slate-800 p-1 rounded-lg gap-1">
+			  <button
+				className={`flex-1 py-2 rounded ${
+				  mode === "bot" ? "bg-slate-600 text-white" : "text-slate-400"
+				}`}
+				onClick={() => {
+				  setMode("bot");
+				  resetBoardState();
+				  setRoomId("");
+				}}
+			  >
+				🤖 BOT
+			  </button>
 
-		  <button className={`flex-1 py-2 rounded ${mode==="online" ? "bg-slate-600 text-white" : "text-slate-400"}`}
-				  onClick={() => setMode("online")}>
-			🌍 ONLINE
-		  </button>
-		</div>
+			  <button
+				className={`flex-1 py-2 rounded ${
+				  mode === "botvsbot" ? "bg-slate-600 text-white" : "text-slate-400"
+				}`}
+				onClick={() => {
+				  setMode("botvsbot");
+				  resetBoardState();
+				  setRoomId("");
+				}}
+			  >
+				🤖🤖 BOT vs BOT
+			  </button>
+
+			  <button
+				className={`flex-1 py-2 rounded ${
+				  mode === "online" ? "bg-slate-600 text-white" : "text-slate-400"
+				}`}
+				onClick={() => setMode("online")}
+			  >
+				🌍 ONLINE
+			  </button>
+			</div>
+
 
 
           {mode === "online" && (
